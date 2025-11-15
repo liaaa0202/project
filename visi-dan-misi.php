@@ -1,6 +1,8 @@
 <?php
 include '../db.php';  // memanggil koneksi database dari file db.php
 
+
+
 $currentPage = basename($_SERVER['PHP_SELF']);
 $isHome      = ($currentPage==='homepage.php');
 $isProfil    = in_array($currentPage,['sejarah.php','visi-dan-misi.php','struktur-organisasi.php']);
@@ -20,66 +22,10 @@ if ($resultGambar && $resultGambar->num_rows > 0) {
     $gambarHeader = $rowGambar['gambar_header'];
 }
 
-// Ambil semua data struktur_organisasi urut berdasarkan urutan ASC
-$sql = "SELECT * FROM guru_staff ORDER BY urutan ASC, nama ASC";
-$resultStrukturOrganisasi = $conn->query($sql);
+// Ambil data dari tabel visi_misi
+$queryVisiMisi = "SELECT * FROM visi_misi ORDER BY id ASC";
+$resultVisiMisi = $conn->query($queryVisiMisi);
 
-$kepala = null;
-$wakil = null;
-$guru = [];
-$staff = [];
-
-// Ambil data ke variabel sesuai urutan
-while ($row = $resultStrukturOrganisasi->fetch_assoc()) {
-    switch ($row['urutan']) {
-        case 1:
-            $kepala = $row;
-            break;
-        case 2:
-            $wakil = $row;
-            break;
-        case 3:
-            $guru[] = $row;
-            break;
-        case 4:
-            $staff[] = $row;
-            break;
-    }
-}
-
-// Fungsi cek guru 1 dan 2 (jika masih dipakai untuk pisah guru depan/bawah)
-function isGuru1or2($jabatan) {
-    return stripos($jabatan, 'Guru 1') !== false || stripos($jabatan, 'Guru 2') !== false;
-}
-
-// Fungsi cek staff 1 dan 2 (tidak dipakai untuk pisah staff lagi, tapi tetap ada jika perlu)
-function isStaff1or2($jabatan) {
-    return stripos($jabatan, 'Staff 1') !== false || stripos($jabatan, 'Staff 2') !== false;
-}
-
-// Fungsi cek guru kelas
-function isGuruKelas($jabatan) {
-    return stripos($jabatan, 'kelas') !== false;
-}
-
-// Fungsi cek guru mata pelajaran
-function isGuruMapel($jabatan) {
-    return stripos($jabatan, 'mata pelajaran') !== false || stripos($jabatan, 'mapel') !== false;
-}
-
-// Pisah guru kelas dan guru mata pelajaran
-$guruKelas = array_filter($guru, fn($g) => isGuruKelas($g['jabatan']));
-$guruMapel = array_filter($guru, fn($g) => isGuruMapel($g['jabatan']));
-
-/// Bagi guru kelas menjadi dua kolom
-$totalGuruKelas = count($guruKelas);
-$half = ceil($totalGuruKelas / 2);
-$guruKelasKiri = array_slice($guruKelas, 0, $half);
-$guruKelasKanan = array_slice($guruKelas, $half);
-
-
-// Gabungkan semua staff jadi satu array tanpa pisah
-$staffGabungan = $staff;
 
 /// Ambil data kontak (misalnya hanya 1 data, karena kontak biasanya satu set)
 $query = "SELECT alamat, email, no_whatsapp, instagram, facebook, youtube, link_gmaps FROM kontak LIMIT 1";
@@ -127,7 +73,7 @@ mysqli_close($conn);
   overflow-x: hidden;
 }
 /* === NAVIGATION STYLE === */
-    nav {
+   nav {
   width: 100%;
   position: fixed;
   background: #003366;
@@ -139,7 +85,7 @@ mysqli_close($conn);
 }
 .nav-container {
   max-width: 1300px; /* biar lebih lebar */
-  margin: 0 40px 0 auto; /* dorong ke kanan */
+  margin: 0 60px 0 auto; /* dorong ke kanan */
   display: flex;
   justify-content: flex-end; /* tetap kanan */
   align-items: center;
@@ -249,99 +195,84 @@ nav ul li a.parent-active {
   transform: translateX(-50%) scaleX(1);
 }
 
-/* Struktur Organisasi Header */
-.struktur-organisasi-header {
+/* HEADER VISI MISI */
+.visi-misi-header {
   position: relative;
   background-image: url('../image/sekolah/gambar_sekolah1.jpg');
+  background-size: cover;
   background-position: center;
   height: 300px;
+  color: white;
   display: flex;
   align-items: center;
+  text-align: left;
   padding-left: 40px;
-  color: white;
   font-family: 'Poppins', sans-serif;
 }
 
-.struktur-organisasi-header .overlay {
+.visi-misi-header .overlay {
   position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background-color: rgba(75, 115, 190, 0.7);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(75, 115, 190, 0.7); /* overlay biru transparan */
   z-index: 1;
 }
 
-.struktur-organisasi-header .header-content {
+.visi-misi-header .header-content {
   position: relative;
   z-index: 2;
 }
 
-.breadcrumb {
+.visi-misi-header .breadcrumb {
+  margin: 0;
   font-size: 16px;
+  font-weight: 400;
+}
+
+.visi-misi-header .judul-header {
+  font-size: 48px;
+  font-weight: bold;
   margin: 0;
 }
 
-.judul-header {
-  font-size: 40px;
-  font-weight: bold;
-  margin: 10px 0 0 0;
-}
-/* Struktur Organisasi Bagan */
-.bagan {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  font-family: 'Poppins', sans-serif;
-}
-.bagan-item.kepala {
-  margin-top: 50px; /* Atur sesuai kebutuhan */
-}
-.bagan-item {
-  border: 1px solid #ccc;
-  padding: 10px 16px;
-  border-radius: 8px;
-  width: 180px;
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  text-align: center;
-  margin: 5px auto;
-}
-.nama {
-  font-weight: 600;
-  font-size: 14px;
-  color: #000;
-  margin-bottom: 2px;
-}
 
-.jabatan {
-  font-size: 12px;
-  color: #666;
-}
+/* KONTEN VISI MISI */
+.visi-misi-content {
+    font-family: 'Poppins', sans-serif;
+    padding: 30px 30px;
+  }
 
-.bagan-cabang {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 40px;
-  margin-top: 20px;
-}
+  .visi-misi-item {
+    max-width: 800px;
+    margin: 0 auto;
+  }
 
-.bagan-cabang-kiri {
-  flex: 1;
-  margin-right: 40px;
-}
+  .visi-title,
+  .misi-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #000;
+    margin-top: 30px;
+    margin-bottom: 15px;
+  }
 
-.bagan-cabang-kanan {
-  flex: 1;
-  margin-left: 40px;
-}
+  .visi-text ul,
+  .misi-text ul {
+    padding-left: 20px;
+    margin-top: 0;
+    margin-bottom: 20px;
+  }
 
-.bagan-grup {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: center;
-}
+  .visi-text li,
+  .misi-text li {
+    font-size: 16px;
+    color: #555;
+    margin-bottom: 8px;
+    line-height: 1.6;
+  }
+
 
 /* Footer Container */
 .footer-map-content {
@@ -456,7 +387,7 @@ nav ul li a.parent-active {
       <li><a href="prestasi" class="<?= $isPrestasi?'active':'' ?>">PRESTASI</a></li>
       <li><a href="" class="no-link <?= $isInformasi?'parent-active':'' ?>">INFORMASI</a>
         <ul class="dropdown-menu">
-          <li><a href="ekstrakulikuler" class="<?= $currentPage==='ekstrakulikuler.php'?'active':'' ?>">Ekstrakulikuler</a></li>
+          <li><a href="ekstrakulikuler" class="<?= $currentPage==='ekstrakulikuler.php'?'active':'' ?>">Ekstrakurikuler</a></li>
           <li><a href="fasilitas" class="<?= $currentPage==='fasilitas.php'?'active':'' ?>">Fasilitas</a></li>
           <li><a href="guru-dan-staff" class="<?= $currentPage==='guru-dan-staff.php'?'active':'' ?>">Guru dan Staff</a></li>
           <li><a href="alumni" class="<?= $currentPage==='alumni.php'?'active':'' ?>">Alumni</a></li>
@@ -472,100 +403,52 @@ nav ul li a.parent-active {
 </nav>
 
 
-  
-<!-- HEADER Struktur Organisasi -->
-<section class="struktur-organisasi-header">
+<!-- HEADER VISI MISI -->
+<section class="visi-misi-header">
   <div class="overlay"></div>
   <div class="container header-content">
-    <p class="breadcrumb">Profil / Struktur Organisasi</p>
-    <h1 class="judul-header">Struktur Organisasi</h1>
+    <p class="breadcrumb">Profil / Visi & Misi</p>
+    <h1 class="judul-header">Visi & Misi</h1>
   </div>
 </section>
 
 
-<!-- KONTEN STRUKTUR ORGANISASI -->
-<!-- Baris 1: Kepala dan Wakil -->
-<div class="baris-atas" style="display: flex; justify-content: center; gap: 40px; margin-bottom: 30px;">
+<!-- KONTEN VISI MISI -->
+<section class="visi-misi-content">
+  <div class="container">
+    <?php
+    $semuaVisi = '';
+    $semuaMisi = '';
 
-  <?php if ($kepala): ?>
-    <div class="bagan-kolom kepala" style="text-align: center;">
-      <h5>Kepala Sekolah</h5>
-      <div class="bagan-item">
-        <div class="nama"><?= htmlspecialchars($kepala['nama']) ?></div>
-        <div class="jabatan"><?= htmlspecialchars($kepala['jabatan']) ?></div>
+    while ($row = $resultVisiMisi->fetch_assoc()) {
+        $semuaVisi .= $row['visi'] . "\n";
+        $semuaMisi .= $row['misi'] . "\n";
+    }
+
+    function formatToList($text) {
+        $items = array_filter(array_map('trim', explode("\n", $text)));
+        $html = "<ul>";
+        foreach ($items as $item) {
+            $html .= "<li>" . htmlspecialchars($item) . "</li>";
+        }
+        $html .= "</ul>";
+        return $html;
+    }
+    ?>
+
+    <div class="visi-misi-item">
+      <h3 class="visi-title">Visi Sekolah</h3>
+      <div class="visi-text">
+        <?= formatToList($semuaVisi) ?>
       </div>
-    </div>
-  <?php endif; ?>
 
-  <?php if ($wakil): ?>
-    <div class="bagan-kolom wakil" style="text-align: center;">
-      <h5>Wakil Kepala Sekolah</h5>
-      <div class="bagan-item">
-        <div class="nama"><?= htmlspecialchars($wakil['nama']) ?></div>
-        <div class="jabatan"><?= htmlspecialchars($wakil['jabatan']) ?></div>
+      <h3 class="misi-title">Misi Sekolah</h3>
+      <div class="misi-text">
+        <?= formatToList($semuaMisi) ?>
       </div>
-    </div>
-  <?php endif; ?>
-
-</div>
-
-
-
-<!-- Baris 2: Guru Mapel - Guru Kelas - Staff -->
-<div class="baris-kedua" style="display: flex; gap: 40px;">
-
-  <!-- Guru Mata Pelajaran -->
-  <div class="bagan-kolom guru-mapel" style="flex: 1;">
-    <h5 style="text-align: center;">Guru Mata Pelajaran</h5>
-    <?php foreach ($guruMapel as $g): ?>
-      <div class="bagan-item">
-        <div class="nama"><?= htmlspecialchars($g['nama']) ?></div>
-        <div class="jabatan"><?= htmlspecialchars($g['jabatan']) ?></div>
-      </div>
-    <?php endforeach; ?>
-  </div>
-
-  <!-- Guru Kelas -->
-  <div class="bagan-kolom guru-kelas" style="flex: 1;">
-  <h5 style="text-align: center;">Guru Kelas</h5>
-  <div style="display: flex; gap: 20px;">
-    <!-- Kolom Kiri -->
-    <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
-      <?php foreach ($guruKelasKiri as $g): ?>
-        <div class="bagan-item">
-          <div class="nama"><?= htmlspecialchars($g['nama']) ?></div>
-          <div class="jabatan"><?= htmlspecialchars($g['jabatan']) ?></div>
-        </div>
-      <?php endforeach; ?>
-    </div>
-
-    <!-- Kolom Kanan -->
-    <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
-      <?php foreach ($guruKelasKanan as $g): ?>
-        <div class="bagan-item">
-          <div class="nama"><?= htmlspecialchars($g['nama']) ?></div>
-          <div class="jabatan"><?= htmlspecialchars($g['jabatan']) ?></div>
-        </div>
-      <?php endforeach; ?>
     </div>
   </div>
-</div>
-
-  <!-- Staff -->
-  <div class="bagan-kolom staff" style="flex: 1;">
-    <h5 style="text-align: center;">Staff</h5>
-    <?php foreach ($staffGabungan as $s): ?>
-      <div class="bagan-item">
-        <div class="nama"><?= htmlspecialchars($s['nama']) ?></div>
-        <div class="jabatan"><?= htmlspecialchars($s['jabatan']) ?></div>
-      </div>
-    <?php endforeach; ?>
-  </div>
-
-</div>
-
-
-
+</section>
 
 
 

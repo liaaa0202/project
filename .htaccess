@@ -1,11 +1,15 @@
 RewriteEngine On
 
-# Hilangkan .php dari URL
+# ================================
+# 1. Hilangkan .php
+# ================================
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}\.php -f
 RewriteRule ^([^/]+)$ $1.php [L]
 
-# Hilangkan .html dari URL
+# ================================
+# 2. Slug Berita
+# ================================
+RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME}\.html -f
-RewriteRule ^([^/]+)$ $1.html [L]
+RewriteRule ^([^/]+)$ berita-detail.php?slug=$1 [L,QSA]

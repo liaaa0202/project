@@ -1,85 +1,51 @@
 <?php
-include '../db.php';  // memanggil koneksi database dari file db.php
+include '../db.php'; // koneksi ke database
+
 
 $currentPage = basename($_SERVER['PHP_SELF']);
-$isHome      = ($currentPage==='homepage.php');
-$isProfil    = in_array($currentPage,['sejarah.php','visi-dan-misi.php','struktur-organisasi.php']);
-$isBerita    = ($currentPage==='berita.php');
-$isPPDB      = ($currentPage==='ppdb.php');
-$isPrestasi  = ($currentPage==='prestasi.php');
-$isInformasi = in_array($currentPage,['ekstrakulikuler.php','fasilitas.php','guru-dan-staff.php','alumni.php']);
-$isAdmin     = ($currentPage==='login.php');
+
+$isHome = ($currentPage == 'homepage.php');
+$isProfil = in_array($currentPage, ['sejarah.php', 'visi-dan-misi.php', 'struktur-organisasi.php']);
+$isBerita = in_array($currentPage, ['berita.php', 'berita-detail.php']);
+$isPPDB = ($currentPage == 'ppdb.php');
+$isPrestasi = ($currentPage == 'prestasi.php');
+$isInformasi = in_array($currentPage, ['ekstrakulikuler.php', 'fasilitas.php', 'guru-dan-staff.php', 'alumni.php']);
+$isAdmin = ($currentPage == 'login.php');
+
+// Ambil slug dari URL
+$slug = $_GET['slug'] ?? '';
+if (empty($slug)) {
+    echo "Berita tidak ditemukan!";
+    exit;
+}
+
+$query = "SELECT * FROM berita WHERE slug = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("s", $slug);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result->num_rows === 0) {
+    echo "Berita tidak ditemukan!";
+    exit;
+}
+
+$berita = $result->fetch_assoc();
+
+// Tambah 1 view
+$update = $conn->prepare("UPDATE berita SET views = views + 1 WHERE slug = ?");
+$update->bind_param("s", $slug);
+$update->execute();
 
 
 // Ambil gambar header
 $sqlGambar = "SELECT gambar_header FROM header LIMIT 1";
-$resultGambar = $conn->query($sqlGambar);
+$resultGambar = mysqli_query($conn, $sqlGambar);
 $gambarHeader = "default-header.jpg";
-if ($resultGambar && $resultGambar->num_rows > 0) {
-    $rowGambar = $resultGambar->fetch_assoc();
+if ($resultGambar && mysqli_num_rows($resultGambar) > 0) {
+    $rowGambar = mysqli_fetch_assoc($resultGambar);
     $gambarHeader = $rowGambar['gambar_header'];
 }
-
-// Ambil semua data struktur_organisasi urut berdasarkan urutan ASC
-$sql = "SELECT * FROM guru_staff ORDER BY urutan ASC, nama ASC";
-$resultStrukturOrganisasi = $conn->query($sql);
-
-$kepala = null;
-$wakil = null;
-$guru = [];
-$staff = [];
-
-// Ambil data ke variabel sesuai urutan
-while ($row = $resultStrukturOrganisasi->fetch_assoc()) {
-    switch ($row['urutan']) {
-        case 1:
-            $kepala = $row;
-            break;
-        case 2:
-            $wakil = $row;
-            break;
-        case 3:
-            $guru[] = $row;
-            break;
-        case 4:
-            $staff[] = $row;
-            break;
-    }
-}
-
-// Fungsi cek guru 1 dan 2 (jika masih dipakai untuk pisah guru depan/bawah)
-function isGuru1or2($jabatan) {
-    return stripos($jabatan, 'Guru 1') !== false || stripos($jabatan, 'Guru 2') !== false;
-}
-
-// Fungsi cek staff 1 dan 2 (tidak dipakai untuk pisah staff lagi, tapi tetap ada jika perlu)
-function isStaff1or2($jabatan) {
-    return stripos($jabatan, 'Staff 1') !== false || stripos($jabatan, 'Staff 2') !== false;
-}
-
-// Fungsi cek guru kelas
-function isGuruKelas($jabatan) {
-    return stripos($jabatan, 'kelas') !== false;
-}
-
-// Fungsi cek guru mata pelajaran
-function isGuruMapel($jabatan) {
-    return stripos($jabatan, 'mata pelajaran') !== false || stripos($jabatan, 'mapel') !== false;
-}
-
-// Pisah guru kelas dan guru mata pelajaran
-$guruKelas = array_filter($guru, fn($g) => isGuruKelas($g['jabatan']));
-$guruMapel = array_filter($guru, fn($g) => isGuruMapel($g['jabatan']));
-
-/// Bagi guru kelas menjadi dua kolom
-$totalGuruKelas = count($guruKelas);
-$half = ceil($totalGuruKelas / 2);
-$guruKelasKiri = array_slice($guruKelas, 0, $half);
-$guruKelasKanan = array_slice($guruKelas, $half);
-
-
-// Gabungkan semua staff jadi satu array tanpa pisah
-$staffGabungan = $staff;
 
 /// Ambil data kontak (misalnya hanya 1 data, karena kontak biasanya satu set)
 $query = "SELECT alamat, email, no_whatsapp, instagram, facebook, youtube, link_gmaps FROM kontak LIMIT 1";
@@ -103,9 +69,8 @@ if ($result && mysqli_num_rows($result) > 0) {
 
 // Tutup koneksi database
 mysqli_close($conn);
-
-
 ?>
+
 
 
 
@@ -127,6 +92,7 @@ mysqli_close($conn);
   overflow-x: hidden;
 }
 /* === NAVIGATION STYLE === */
+
     nav {
   width: 100%;
   position: fixed;
@@ -134,7 +100,7 @@ mysqli_close($conn);
   padding: 8px 0;
   top: 0;
   left: 0;
-  z-index: 10;
+  z-index: 9000;
   box-sizing: border-box;
 }
 .nav-container {
@@ -203,7 +169,7 @@ nav ul li a.parent-active {
   left: 0;
   min-width: 180px;
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
+  z-index: 10000;
   padding: 0;
   border-radius: 5px;
 }
@@ -249,10 +215,11 @@ nav ul li a.parent-active {
   transform: translateX(-50%) scaleX(1);
 }
 
-/* Struktur Organisasi Header */
-.struktur-organisasi-header {
+/* Header */
+.berita-header {
   position: relative;
-  background-image: url('../image/sekolah/gambar_sekolah1.jpg');
+  background-image: linear-gradient(rgba(75, 115, 190, 0.7), rgba(75, 115, 190, 0.7)), url('../image/sekolah/gambar_sekolah1.jpg');
+  background-size: cover;
   background-position: center;
   height: 300px;
   display: flex;
@@ -262,85 +229,88 @@ nav ul li a.parent-active {
   font-family: 'Poppins', sans-serif;
 }
 
-.struktur-organisasi-header .overlay {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background-color: rgba(75, 115, 190, 0.7);
+.berita-header .header-content {
+  position: relative;
   z-index: 1;
 }
 
-.struktur-organisasi-header .header-content {
-  position: relative;
-  z-index: 2;
-}
-
 .breadcrumb {
-  font-size: 16px;
+  font-size: 14px;
   margin: 0;
 }
 
 .judul-header {
-  font-size: 40px;
+  font-size: 43px;
   font-weight: bold;
   margin: 10px 0 0 0;
 }
-/* Struktur Organisasi Bagan */
-.bagan {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  font-family: 'Poppins', sans-serif;
+/* === Konten Berita === */
+/* === Konten Berita === */
+.berita-detail.container {
+  padding: 40px 20px;
+  max-width: 800px;
+  margin: 40px auto;
+  text-align: left; /* pastikan teks rata kiri */
+ 
 }
-.bagan-item.kepala {
-  margin-top: 50px; /* Atur sesuai kebutuhan */
+
+/* Gambar berita */
+.berita-detail img {
+  width: 50%;             /* penuh container */
+  max-width: 300px;        /* biar gak terlalu besar */
+  border-radius: 10px;
+  margin-bottom: 15px;
+  object-fit: cover;
+  display: block;
+  margin-left: 0;          /* mepet kiri */
 }
-.bagan-item {
-  border: 1px solid #ccc;
-  padding: 10px 16px;
-  border-radius: 8px;
-  width: 180px;
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  text-align: center;
-  margin: 5px auto;
-}
-.nama {
-  font-weight: 600;
+
+
+/* Tanggal & Views */
+.meta-info {
   font-size: 14px;
-  color: #000;
-  margin-bottom: 2px;
+  color: #888;
+  margin-bottom: 10px;
 }
 
-.jabatan {
-  font-size: 12px;
-  color: #666;
+.meta-info i {
+  margin-right: 6px;
+  color: #003366; /* warna ikon */
 }
 
-.bagan-cabang {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 40px;
+.meta-info .fa-eye {
+  color: #003366;
+}
+
+/* Isi berita */
+.isi-berita {
+  font-size: 16px;
+  color: #444;
+  white-space: pre-line;
   margin-top: 20px;
+  line-height: 1.5;
+  text-align: justify;
+}
+.isi-berita br {
+  display: block;
+  content: "";
+  margin-bottom: 16px;
 }
 
-.bagan-cabang-kiri {
-  flex: 1;
-  margin-right: 40px;
-}
 
-.bagan-cabang-kanan {
-  flex: 1;
-  margin-left: 40px;
+/* === Footer Kontak === */
+.footer-map-content {
+  background: #1c1c1c;
+  color: #fff;
+  padding: 30px 15px;
 }
-
-.bagan-grup {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: center;
+.footer-map-content .map-text h4 {
+  margin-bottom: 10px;
+  font-size: 18px;
+}
+.footer-map-content .map-text p {
+  font-size: 14px;
+  margin: 0;
 }
 
 /* Footer Container */
@@ -440,135 +410,99 @@ nav ul li a.parent-active {
 </style>
 </head>
 <body>
-<nav>
+ <nav>
   <div class="nav-container">
     <ul>
-      <li><a href="homepage" class="<?= $isHome?'active':'' ?>">HOME</a></li>
-      <li><a href="" class="no-link <?= $isProfil?'parent-active':'' ?>">PROFIL</a>
+
+      <!-- HOME -->
+      <li>
+        <a href="homepage" class="<?= $currentPage === 'homepage.php' ? 'active' : '' ?>">HOME</a>
+      </li>
+
+      <!-- PROFIL -->
+      <li>
+        <a href="" class="no-link <?= $isProfil ? 'parent-active' : '' ?>">PROFIL</a>
         <ul class="dropdown-menu">
-          <li><a href="sejarah" class="<?= $currentPage==='sejarah.php'?'active':'' ?>">Sejarah</a></li>
-          <li><a href="visi-dan-misi" class="<?= $currentPage==='visi-dan-misi.php'?'active':'' ?>">Visi dan Misi</a></li>
-          <li><a href="struktur-organisasi" class="<?= $currentPage==='struktur-organisasi.php'?'active':'' ?>">Struktur Organisasi</a></li>
+          <li><a href="sejarah" class="<?= $currentPage === 'sejarah.php' ? 'active' : '' ?>">Sejarah</a></li>
+          <li><a href="visi-dan-misi" class="<?= $currentPage === 'visi-dan-misi.php' ? 'active' : '' ?>">Visi dan Misi</a></li>
+          <li><a href="struktur-organisasi" class="<?= $currentPage === 'struktur-organisasi.php' ? 'active' : '' ?>">Struktur Organisasi</a></li>
         </ul>
       </li>
-      <li><a href="berita" class="<?= $isBerita?'active':'' ?>">BERITA</a></li>
-      <li><a href="ppdb" class="<?= $isPPDB?'active':'' ?>">PPDB</a></li>
-      <li><a href="prestasi" class="<?= $isPrestasi?'active':'' ?>">PRESTASI</a></li>
-      <li><a href="" class="no-link <?= $isInformasi?'parent-active':'' ?>">INFORMASI</a>
+
+      <!-- BERITA -->
+      <li>
+        <a href="berita" class="<?= $isBerita ? 'active' : '' ?>">BERITA</a>
+      </li>
+
+      <!-- PPDB -->
+      <li>
+        <a href="ppdb" class="<?= $currentPage === 'ppdb.php' ? 'active' : '' ?>">PPDB</a>
+      </li>
+
+      <!-- PRESTASI -->
+      <li>
+        <a href="prestasi" class="<?= $currentPage === 'prestasi.php' ? 'active' : '' ?>">PRESTASI</a>
+      </li>
+
+      <!-- INFORMASI -->
+      <li>
+        <a href="" class="no-link <?= $isInformasi ? 'parent-active' : '' ?>">INFORMASI</a>
         <ul class="dropdown-menu">
-          <li><a href="ekstrakulikuler" class="<?= $currentPage==='ekstrakulikuler.php'?'active':'' ?>">Ekstrakulikuler</a></li>
-          <li><a href="fasilitas" class="<?= $currentPage==='fasilitas.php'?'active':'' ?>">Fasilitas</a></li>
-          <li><a href="guru-dan-staff" class="<?= $currentPage==='guru-dan-staff.php'?'active':'' ?>">Guru dan Staff</a></li>
-          <li><a href="alumni" class="<?= $currentPage==='alumni.php'?'active':'' ?>">Alumni</a></li>
+          <li><a href="ekstrakulikuler" class="<?= $currentPage === 'ekstrakulikuler.php' ? 'active' : '' ?>">Ekstrakulikuler</a></li>
+          <li><a href="fasilitas" class="<?= $currentPage === 'fasilitas.php' ? 'active' : '' ?>">Fasilitas</a></li>
+          <li><a href="guru-dan-staff" class="<?= $currentPage === 'guru-dan-staff.php' ? 'active' : '' ?>">Guru dan Staff</a></li>
+          <li><a href="alumni" class="<?= $currentPage === 'alumni.php' ? 'active' : '' ?>">Alumni</a></li>
         </ul>
       </li>
-      <li><a href="" class="no-link <?= $isAdmin?'parent-active':'' ?>">ADMIN</a>
+
+      <!-- ADMIN -->
+      <li>
+        <a href="" class="no-link <?= $isAdmin ? 'parent-active' : '' ?>">ADMIN</a>
         <ul class="dropdown-menu">
-          <li><a href="../admin/login" class="<?= $currentPage==='login.php'?'active':'' ?>">Login</a></li>
+          <li><a href="../admin/login" class="<?= $currentPage === 'login.php' ? 'active' : '' ?>">Login</a></li>
         </ul>
       </li>
+
     </ul>
   </div>
 </nav>
 
 
+
   
-<!-- HEADER Struktur Organisasi -->
-<section class="struktur-organisasi-header">
-  <div class="overlay"></div>
+<!-- HEADER -->
+<section class="berita-header">
   <div class="container header-content">
-    <p class="breadcrumb">Profil / Struktur Organisasi</p>
-    <h1 class="judul-header">Struktur Organisasi</h1>
+    <p class="breadcrumb">Profil / Berita / <?= htmlspecialchars($berita['judul']) ?></p>
+    <h1 class="judul-header"><?= htmlspecialchars($berita['judul']) ?></h1>
   </div>
 </section>
 
 
-<!-- KONTEN STRUKTUR ORGANISASI -->
-<!-- Baris 1: Kepala dan Wakil -->
-<div class="baris-atas" style="display: flex; justify-content: center; gap: 40px; margin-bottom: 30px;">
+<!-- ISI BERITA -->
+<section class="berita-detail container">
+  <!-- Gambar Berita -->
+  <?php if (!empty($berita['foto'])): ?>
+    <img src="/KP/image/berita/<?= htmlspecialchars($berita['foto']) ?>" alt="<?= htmlspecialchars($berita['judul']) ?>" style="max-width:100%; margin: 20px 0;">
 
-  <?php if ($kepala): ?>
-    <div class="bagan-kolom kepala" style="text-align: center;">
-      <h5>Kepala Sekolah</h5>
-      <div class="bagan-item">
-        <div class="nama"><?= htmlspecialchars($kepala['nama']) ?></div>
-        <div class="jabatan"><?= htmlspecialchars($kepala['jabatan']) ?></div>
-      </div>
-    </div>
   <?php endif; ?>
 
-  <?php if ($wakil): ?>
-    <div class="bagan-kolom wakil" style="text-align: center;">
-      <h5>Wakil Kepala Sekolah</h5>
-      <div class="bagan-item">
-        <div class="nama"><?= htmlspecialchars($wakil['nama']) ?></div>
-        <div class="jabatan"><?= htmlspecialchars($wakil['jabatan']) ?></div>
-      </div>
-    </div>
-  <?php endif; ?>
+  <!-- Tanggal dan Views -->
+  <p class="meta-info">
+    <i class="fa fa-calendar"></i> <?= date("d M Y", strtotime($berita['tanggal'])) ?> &nbsp;&nbsp;
+    <i class="fa fa-eye"></i> <?= $berita['views'] + 1 ?> views
+  </p>
 
+  <!-- Isi Deskripsi Berita -->
+  <!-- Isi Deskripsi Berita -->
+<div class="isi-berita">
+  <?= $berita['deskripsi'] ?>
 </div>
+</section>
 
 
 
-<!-- Baris 2: Guru Mapel - Guru Kelas - Staff -->
-<div class="baris-kedua" style="display: flex; gap: 40px;">
-
-  <!-- Guru Mata Pelajaran -->
-  <div class="bagan-kolom guru-mapel" style="flex: 1;">
-    <h5 style="text-align: center;">Guru Mata Pelajaran</h5>
-    <?php foreach ($guruMapel as $g): ?>
-      <div class="bagan-item">
-        <div class="nama"><?= htmlspecialchars($g['nama']) ?></div>
-        <div class="jabatan"><?= htmlspecialchars($g['jabatan']) ?></div>
-      </div>
-    <?php endforeach; ?>
-  </div>
-
-  <!-- Guru Kelas -->
-  <div class="bagan-kolom guru-kelas" style="flex: 1;">
-  <h5 style="text-align: center;">Guru Kelas</h5>
-  <div style="display: flex; gap: 20px;">
-    <!-- Kolom Kiri -->
-    <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
-      <?php foreach ($guruKelasKiri as $g): ?>
-        <div class="bagan-item">
-          <div class="nama"><?= htmlspecialchars($g['nama']) ?></div>
-          <div class="jabatan"><?= htmlspecialchars($g['jabatan']) ?></div>
-        </div>
-      <?php endforeach; ?>
-    </div>
-
-    <!-- Kolom Kanan -->
-    <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
-      <?php foreach ($guruKelasKanan as $g): ?>
-        <div class="bagan-item">
-          <div class="nama"><?= htmlspecialchars($g['nama']) ?></div>
-          <div class="jabatan"><?= htmlspecialchars($g['jabatan']) ?></div>
-        </div>
-      <?php endforeach; ?>
-    </div>
-  </div>
-</div>
-
-  <!-- Staff -->
-  <div class="bagan-kolom staff" style="flex: 1;">
-    <h5 style="text-align: center;">Staff</h5>
-    <?php foreach ($staffGabungan as $s): ?>
-      <div class="bagan-item">
-        <div class="nama"><?= htmlspecialchars($s['nama']) ?></div>
-        <div class="jabatan"><?= htmlspecialchars($s['jabatan']) ?></div>
-      </div>
-    <?php endforeach; ?>
-  </div>
-
-</div>
-
-
-
-
-
-
+    
 
 <!-- FOOTER -->
 

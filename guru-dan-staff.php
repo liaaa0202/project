@@ -1,406 +1,650 @@
 <?php
-session_start();
-include '../db.php';
+include '../db.php';  // koneksi database
 
 $currentPage = basename($_SERVER['PHP_SELF']);
-$editData = null;
-$data = [];
 
-// Ambil semua data guru/staff
-$result = $conn->query("SELECT * FROM guru_staff ORDER BY id ASC"); // urut dari id kecil ke besar
-if ($result) {
-    while ($row = $result->fetch_assoc()) {
-        $data[] = $row;
+$isHome = $currentPage == 'homepage.php';
+$isProfil = in_array($currentPage, ['sejarah.php','visi-dan-misi.php','struktur-organisasi.php']);
+$isBerita = $currentPage == 'berita.php';
+$isPPDB = $currentPage == 'ppdb.php';
+$isPrestasi = $currentPage == 'prestasi.php';
+$isInformasi = in_array($currentPage, ['ekstrakulikuler.php','fasilitas.php','guru-dan-staff.php','alumni.php']);
+$isAdmin = $currentPage == 'login.php';
+
+// Ambil gambar header
+$sqlGambar = "SELECT gambar_header FROM header LIMIT 1";
+$resultGambar = $conn->query($sqlGambar);
+$gambarHeader = "default-header.jpg";
+if ($resultGambar && $resultGambar->num_rows > 0) {
+    $rowGambar = $resultGambar->fetch_assoc();
+    $gambarHeader = $rowGambar['gambar_header'];
+}
+
+// Ambil data guru dan staff
+// Ambil data guru & staff urut berdasarkan urutan dan nama
+$query = "SELECT * FROM guru_staff ORDER BY urutan ASC, nama ASC";
+$result = $conn->query($query);
+
+// Siapkan array untuk kategori
+$data = [
+    'Kepala Sekolah' => [],
+    'Wakil Kepala Sekolah' => [],
+    'Guru' => [],
+    'Staff' => [],
+];
+
+// Masukkan data ke kategori sesuai urutan
+while ($row = $result->fetch_assoc()) {
+    switch ($row['urutan']) {
+        case 1:
+            $data['Kepala Sekolah'][] = $row;
+            break;
+        case 2:
+            $data['Wakil Kepala Sekolah'][] = $row;
+            break;
+        case 3:
+            $data['Guru'][] = $row;
+            break;
+        case 4:
+            $data['Staff'][] = $row;
+            break;
     }
 }
 
-// Jika edit diklik
-if (isset($_GET['edit'])) {
-    $idEdit = (int)$_GET['edit'];
-    $stmt = $conn->prepare("SELECT * FROM guru_staff WHERE id = ?");
-    $stmt->bind_param("i", $idEdit);
-    $stmt->execute();
-    $editData = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+/// Ambil data kontak (misalnya hanya 1 data, karena kontak biasanya satu set)
+$query = "SELECT alamat, email, no_whatsapp, instagram, facebook, youtube, link_gmaps FROM kontak LIMIT 1";
+$result = mysqli_query($conn, $query);
+
+// Inisialisasi default
+$kontak = [
+    'alamat' => '',
+    'email' => '',
+    'no_whatsapp' => '',
+    'instagram' => '',
+    'facebook' => '',
+    'youtube' => '',
+    'link_gmaps' => ''
+];
+
+// Ambil data dari database jika tersedia
+if ($result && mysqli_num_rows($result) > 0) {
+    $kontak = mysqli_fetch_assoc($result);
 }
 
-// Fungsi upload dan cek hash image
-function uploadImageWithHash($fileInputName, $uploadDir = '../image/guru_staff/') {
-    if (!isset($_FILES[$fileInputName]) || $_FILES[$fileInputName]['error'] !== UPLOAD_ERR_OK) {
-        return null; // Tidak ada file diupload
-    }
-
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
-    }
-
-    $tmpName = $_FILES[$fileInputName]['tmp_name'];
-    $fileName = basename($_FILES[$fileInputName]['name']);
-
-    // Hitung hash file yang diupload
-    $hashBaru = md5_file($tmpName);
-
-    // Cari file dengan hash sama di folder upload
-    foreach (glob($uploadDir . '*') as $existingFile) {
-        if (md5_file($existingFile) === $hashBaru) {
-            // File sama sudah ada, pakai file ini
-            return $existingFile;
-        }
-    }
-
-    // Kalau belum ada file sama, pindahkan file baru
-    $targetFile = $uploadDir . time() . '_' . $fileName;
-    if (move_uploaded_file($tmpName, $targetFile)) {
-        return $targetFile;
-    }
-
-    return null; // Upload gagal
-}
-
-// Proses tambah data
-if (isset($_POST['tambah'])) {
-    // Ambil nilai ID manual jika ada
-    $customId = isset($_POST['custom_id']) && $_POST['custom_id'] !== '' ? intval($_POST['custom_id']) : null;
-    $nama = $_POST['nama'];
-    $jabatan = $_POST['jabatan'];
-
-    $imagePath = uploadImageWithHash('image');
-
-    // Gunakan custom ID jika diisi
-    if ($customId !== null) {
-        $stmt = $conn->prepare("INSERT INTO guru_staff (id, nama, jabatan, image) VALUES (?, ?, ?, ?)");
-        if (!$stmt) {
-            die("Prepare failed: (" . $conn->errno . ") " . $conn->error);
-        }
-        $stmt->bind_param("isss", $customId, $nama, $jabatan, $imagePath);
-    } else {
-        $stmt = $conn->prepare("INSERT INTO guru_staff (nama, jabatan, image) VALUES (?, ?, ?)");
-        if (!$stmt) {
-            die("Prepare failed: (" . $conn->errno . ") " . $conn->error);
-        }
-        $stmt->bind_param("sss", $nama, $jabatan, $imagePath);
-    }
-
-    $stmt->execute();
-    $stmt->close();
-
-    $_SESSION['success'] = "Data berhasil ditambahkan.";
-    header("Location: guru-dan-staff");
-    exit;
-}
-
-
-// Proses update data
-if (isset($_POST['update'])) {
-    $id = $_POST['id'];
-    $nama = $_POST['nama'];
-    $jabatan = $_POST['jabatan'];
-    $imageLama = $_POST['image_lama'];
-
-    $imagePath = $imageLama;
-
-    $uploadResult = uploadImageWithHash('image');
-    if ($uploadResult !== null) {
-        $imagePath = $uploadResult;
-
-        // Hapus file lama jika ada dan berbeda dengan file baru
-        if ($imageLama && file_exists($imageLama) && $imageLama !== $imagePath) {
-            unlink($imageLama);
-        }
-    }
-
-    $stmt = $conn->prepare("UPDATE guru_staff SET nama = ?, jabatan = ?, image = ? WHERE id = ?");
-    $stmt->bind_param("sssi", $nama, $jabatan, $imagePath, $id);
-    $stmt->execute();
-    $stmt->close();
-
-    $_SESSION['success'] = "Data berhasil diupdate.";
-    header("Location:  guru-dan-staff");
-    exit;
-}
-
-// Proses hapus data
-if (isset($_GET['hapus'])) {
-    $id = (int)$_GET['hapus'];
-
-    // Ambil data gambar lama
-    $stmt = $conn->prepare("SELECT image FROM guru_staff WHERE id = ?");
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $res = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-
-    if ($res && $res['image'] && file_exists($res['image'])) {
-        unlink($res['image']);
-    }
-
-    // Hapus data
-    $stmt = $conn->prepare("DELETE FROM guru_staff WHERE id = ?");
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $stmt->close();
-
-    $_SESSION['success'] = "Data berhasil dihapus.";
-    header("Location: guru-dan-staff");
-    exit;
-}
+// Tutup koneksi database
+mysqli_close($conn);
 ?>
 
 
+
+
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Dashboard Admin</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title></title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@9/swiper-bundle.min.css"/>
 <style>
-  body { margin: 0; padding: 0; }
-  #wrapper { display: flex; width: 100%; }
-  #sidebar-wrapper {
-    min-width: 250px;
-    max-width: 250px;
-    background-color: #003366;
-    color: white;
-    min-height: 100vh;
+    body {
+  font-family: 'Poppins', sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+/* === NAVIGATION STYLE === */
+    nav {
+  width: 100%;
+  position: fixed;
+  background: #003366;
+  padding: 8px 0;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  box-sizing: border-box;
+}
+.nav-container {
+  max-width: 1300px; /* biar lebih lebar */
+  margin: 0 40px 0 auto; /* dorong ke kanan */
+  display: flex;
+  justify-content: flex-end; /* tetap kanan */
+  align-items: center;
+  height: 40px;
+}
+
+
+nav ul {
+  list-style: none;
+  display: flex;
+  margin: 0;
+  margin-left: auto;
+  padding: 0;
+  font-size: 14px;
+}
+nav ul li {
+  position: relative;
+  margin-left: 15px; /* jarak antar menu lebih renggang */
+}
+
+nav ul li:first-child {
+  margin-left: 0;
+}
+/* === Umum === */
+nav ul li a {
+  text-decoration: none;
+  color: white;
+  font-weight: bold;
+  padding: 5px 10px;
+  border-radius: 5px;
+  transition: background-color 0.3s, color 0.3s;
+  display: inline-block;
+}
+
+/* Hover semua menu aktif */
+nav ul li a:hover {
+  background-color: #FFCC00;
+  color: #003366;
+}
+
+/* Aktif menu biasa (HOME, BERITA, dsb) */
+nav ul li a.active {
+  background-color: transparent;
+  color: #FFCC00 !important;
+  font-weight: bold;
+}
+
+/* Aktif untuk parent menu (PROFIL, INFORMASI) */
+nav ul li a.parent-active {
+  background-color: transparent;
+  color: #FFCC00 !important;
+  font-weight: bold;
+}
+
+/* === DROPDOWN STYLE === */
+.nav-container ul li .dropdown-menu {
+  display: none;
+  position: absolute;
+  background-color: white;
+  top: 100%;
+  left: 0;
+  min-width: 180px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  padding: 0;
+  border-radius: 5px;
+}
+
+.nav-container ul li:hover .dropdown-menu {
+  display: block;
+}
+
+.nav-container ul li .dropdown-menu li {
+  width: 100%;
+  margin: 0;
+}
+
+.nav-container ul li .dropdown-menu li a {
+  color: #003366;
+  padding: 10px 15px;
+  display: inline-block;
+  font-weight: normal;
+  text-decoration: none;
+  position: relative;
+  transition: color 0.3s ease, font-weight 0.3s ease;
+}
+
+/* Efek underline kuning saat hover submenu */
+.nav-container ul li .dropdown-menu li a::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  width: 80%;
+  height: 2px;
+  background-color: #FFCC00;
+  transition: transform 0.3s ease;
+}
+
+.nav-container ul li .dropdown-menu li a:hover {
+  font-weight: bold;
+}
+
+.nav-container ul li .dropdown-menu li a:hover::after {
+  transform: translateX(-50%) scaleX(1);
+}
+
+/* Header */
+.guru-staff-header {
+  position: relative;
+  background-image: url('../image/sekolah/gambar_sekolah1.jpg');
+  background-size: cover;
+  background-position: center;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  padding-left: 40px;
+  color: white;
+  font-family: 'Poppins', sans-serif;
+}
+
+.guru-staff-header .overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background-color: rgba(75, 115, 190, 0.7);
+  z-index: 1;
+}
+
+.guru-staff-header .header-content {
+  position: relative;
+  z-index: 2;
+}
+
+.breadcrumb {
+  font-size: 16px;
+  margin: 0;
+}
+
+.judul-header {
+  font-size: 40px;
+  font-weight: bold;
+  margin: 10px 0 0 0;
+}
+/*  GURU DAN STAFF */
+.guru-staff-section {
+  padding: 60px 120px;
+}
+.kategori-title {
+  font-size: 24px;
+  margin-bottom: 20px;
+  font-weight: bold;
+  color: #222;
+  border-bottom: 5px solid rgb(3, 80, 156); /* garis bawah abu */
+  padding-bottom: 8px;
+  margin-top: 40px;
+}
+
+.guru-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px; /* jarak antar kartu */
+  justify-content: flex-start;
+}
+.guru-card {
+  background-color: #f0f0f0; /* bingkai abu muda */
+  border-radius: 16px;
+  border: 1px solid #ddd; /* border abu tipis */
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05); /* efek shadow lembut */
+  transition: transform 0.3s ease;
+}
+
+.guru-card:hover {
+  transform: translateY(-5px);
+}
+
+
+.guru-image-wrapper {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 12px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+  height: 250px; /* tinggi tetap */
+  overflow: hidden; /* sembunyikan bagian yang kelebihan */
+}
+
+.guru-image-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* foto otomatis crop supaya penuh */
+  border-radius: 8px;
+}
+
+.guru-info {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 12px 8px;
+  width: 100%;
+  text-align: center;
+}
+
+.guru-nama {
+  font-weight: bold;
+  margin-bottom: 4px;
+  font-size: 16px;
+  color: #222;
+}
+
+.guru-jabatan {
+  color: #555;
+  font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .guru-card img {
+    height: 180px;
   }
-  .list-group-item {
-    border: none;
-    background-color: #003366;
-    color: white;
+}
+
+@media (max-width: 480px) {
+  .guru-card img {
+    height: 150px;
   }
-  .list-group-item:hover {
-    background-color: #495057;
+}
+
+
+
+/* Footer Container */
+.footer-map-content {
+  background-color: #003366;
+  color: #fafafa;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 30px 40px;
+  margin-top: 80px;
+  gap: 50px;
+}
+
+/* Kolom Kiri, Tengah, Kanan */
+.footer-map-content > div {
+  flex: 1;
+  min-width: 250px;
+}
+
+/* Judul */
+.footer-map-content h4 {
+  margin-bottom: 10px;
+  font-size: 18px;
+  color: #ffffff;
+}
+
+/* Paragraf */
+.footer-map-content p {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  color: #f0f0f0;
+}
+
+/* Map iframe */
+.map-iframe iframe {
+  width: 100%;
+  height: 180px;
+  margin-top: 20px;
+  border: 0;
+  border-radius: 8px;
+}
+.map-contact {
+  margin-left: 60px; 
+}
+/* Ikon Sosial */
+.footer-icons {
+  display: flex;
+  gap: 15px;
+  font-size: 26px;
+  margin-top: 30px;
+}
+
+.footer-icons a {
+ color: #fafafa;
+  transition: color 0.3s;
+}
+/* Warna muncul hanya saat hover */
+.footer-icons a[title="WhatsApp"]:hover { color: #25D366; }
+.footer-icons a[title="Instagram"]:hover { color: #C13584; }
+.footer-icons a[title="Facebook"]:hover { color: #1877F2; }
+.footer-icons a[title="Email"]:hover { color: #aa2215; }
+.footer-icons a[title="YouTube"]:hover {color: #FF0000;}
+
+
+.footer-copyright {
+  max-width: 100%;
+  background-color: #064c91; /* biru medium lebih terang */
+  padding: 10px 40px;
+  font-size: 17px;
+  color: #fefefe; /* warna teks putih kebiruan */
+  text-align: center;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+/* Responsive: stacked on small screens */
+@media (max-width: 650px) {
+  .footer {
+    flex-direction: column;
+    align-items: center;
   }
-  .list-group-item.active-page {
-    background-color: #6c757d !important; /* abu-abu */
-    color: white !important;
+  .footer-map, .footer-icons {
+    flex: unset;
+    width: 100%;
   }
-  .collapse .list-group-item {
-    padding-left: 2rem;
+  .footer-icons {
+    flex-direction: row;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 15px;
   }
-  #page-content-wrapper {
-    flex-grow: 1;
-  }
-  .navbar-dark .navbar-nav .nav-link {
-    color: white;
-  }
-  .navbar-dark .navbar-nav .nav-link:hover {
-    color: #ddd;
-  }
-  .btn-primary {
-    background-color: #003366;
-    border-color: #003366;
-  }
-  .btn-primary:hover {
-    background-color: #002244;
-    border-color: #002244;
-  }
-  .custom-glow-btn {
-    background-color: #1a1a2e;
-    color: #fff;
-    border: 2px solid #3c8dbc;
-    border-radius: 12px;
-    box-shadow: 0 0 10px rgba(60, 141, 188, 0.5);
-    transition: all 0.3s ease-in-out;
-  }
-  .custom-glow-btn:hover {
-    background-color: #3c8dbc;
-    box-shadow: 0 0 15px rgba(60, 141, 188, 0.7);
-  }
-  #wrapper.toggled #sidebar-wrapper {
-  margin-left: -250px;
-  transition: margin 0.3s ease;
-  }
-  #sidebar-wrapper {
-  transition: margin 0.3s ease;
-  }
+}
 
 </style>
 </head>
 <body>
-<div class="d-flex" id="wrapper">
-    <!-- Sidebar -->
-  <div id="sidebar-wrapper" class="p-3">
-    <div class="sidebar-heading text-white fw-bold mb-4">Dashboard Admin</div>
-    <div class="list-group list-group-flush">
-      <a href="home" class="list-group-item list-group-item-action"> <i class="fas fa-home me-2"></i> Home</a>
-      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
-          data-bs-toggle="collapse" href="#profilMenu">
-          <div class="d-flex align-items-center">
-            <i class="fas fa-school me-2"></i> <span>Profil</span>
-          </div>
-          <i class="fas fa-caret-down"></i>
-        </a>
+<nav>
+  <div class="nav-container">
+    <ul>
+      <li><a href="homepage" class="<?= $currentPage==='homepage.php'?'active':'' ?>">HOME</a></li>
 
-      <div class="collapse" id="profilMenu">
-        <a href="sejarah" class="list-group-item list-group-item-action"><i class="fas fa-book me-2"></i>Sejarah</a>
-        <a href="visi-misi" class="list-group-item list-group-item-action"><i class="fas fa-lightbulb me-2"></i> Visi dan Misi</a>
-        <a href="struktur-organisasi" class="list-group-item list-group-item-action"><i class="fas fa-sitemap me-2"></i>Struktur Organisasi</a>
-      </div>
-      <a href="berita" class="list-group-item list-group-item-action"> <i class="fas fa-newspaper me-2"></i> Berita</a>
-      <a href="ppdb" class="list-group-item list-group-item-action"><i class="fas fa-users me-2"></i> PPDB</a>
-      <a href="prestasi" class="list-group-item list-group-item-action"><i class="fas fa-trophy me-2"></i> Prestasi</a>
-      <!-- INFORMASI MENU -->
-        <a class="list-group-item list-group-item-action d-flex align-items-center" 
-          data-bs-toggle="collapse" 
-          href="#informasiMenu" 
-          aria-expanded="<?= in_array($currentPage, ['ekstrakulikuler.php', 'fasilitas.php', 'guru-dan-staff.php', 'alumni.php']) ? 'true' : 'false' ?>">
-          <i class="fas fa-info-circle me-2"></i> Informasi <i class="fas fa-caret-down ms-auto"></i>
-        </a>
-        <div class="collapse <?= in_array($currentPage, ['ekstrakulikuler.php', 'fasilitas.php', 'guru-dan-staff.php', 'alumni.php']) ? 'show' : '' ?>" id="informasiMenu">
-          <a href="ekstrakulikuler" class="list-group-item list-group-item-action <?= ($currentPage == 'ekstrakulikuler.php') ? 'active-page' : '' ?>"><i class="fas fa-swimmer me-2"></i> Ekstrakurikuler</a>
-          <a href="fasilitas" class="list-group-item list-group-item-action <?= ($currentPage == 'fasilitas.php') ? 'active-page' : '' ?>"><i class="fas fa-building me-2"></i> Fasilitas</a>
-          <a href="guru-dan-staff" class="list-group-item list-group-item-action <?= ($currentPage == 'guru-dan-staff.php') ? 'active-page' : '' ?>"><i class="fas fa-chalkboard-teacher me-2"></i> Guru & Staff</a>
-          <a href="alumni" class="list-group-item list-group-item-action <?= ($currentPage == 'alumni.php') ? 'active-page' : '' ?>"><i class="fas fa-user-graduate me-2"></i> Alumni</a>
+      <li><a href="" class="no-link <?= $isProfil?'parent-active':'' ?>">PROFIL</a>
+        <ul class="dropdown-menu">
+          <li><a href="sejarah" class="<?= $currentPage==='sejarah.php'?'active':'' ?>">Sejarah</a></li>
+          <li><a href="visi-dan-misi" class="<?= $currentPage==='visi-dan-misi.php'?'active':'' ?>">Visi dan Misi</a></li>
+          <li><a href="struktur-organisasi" class="<?= $currentPage==='struktur-organisasi.php'?'active':'' ?>">Struktur Organisasi</a></li>
+        </ul>
+      </li>
+
+      <li><a href="berita" class="<?= $isBerita?'active':'' ?>">BERITA</a></li>
+      <li><a href="ppdb" class="<?= $isPPDB?'active':'' ?>">PPDB</a></li>
+      <li><a href="prestasi" class="<?= $isPrestasi?'active':'' ?>">PRESTASI</a></li>
+
+      <li><a href="" class="no-link <?= $isInformasi?'parent-active':'' ?>">INFORMASI</a>
+        <ul class="dropdown-menu">
+          <li><a href="ekstrakulikuler" class="<?= $currentPage==='ekstrakulikuler.php'?'active':'' ?>">Ekstrakulikuler</a></li>
+          <li><a href="fasilitas" class="<?= $currentPage==='fasilitas.php'?'active':'' ?>">Fasilitas</a></li>
+          <li><a href="guru-dan-staff" class="<?= $currentPage==='guru-dan-staff.php'?'active':'' ?>">Guru dan Staff</a></li>
+          <li><a href="alumni" class="<?= $currentPage==='alumni.php'?'active':'' ?>">Alumni</a></li>
+        </ul>
+      </li>
+
+      <li><a href="" class="no-link <?= $isAdmin?'parent-active':'' ?>">ADMIN</a>
+        <ul class="dropdown-menu">
+          <li><a href="../admin/login" class="<?= $currentPage==='login.php'?'active':'' ?>">Login</a></li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+
+  
+<!-- HEADER Struktur Organisasi -->
+<section class="guru-staff-header">
+  <div class="overlay"></div>
+  <div class="container header-content">
+    <p class="breadcrumb">Informasi / Guru dan Staff</p>
+    <h1 class="judul-header">Guru dan Staff</h1>
+  </div>
+</section>
+
+
+<!-- KONTEN -->
+<section class="guru-staff-section">
+
+  <!-- Kepala Sekolah -->
+  <?php if (count($data['Kepala Sekolah']) > 0): ?>
+    <h3 class="kategori-title">Kepala Sekolah</h3>
+    <div class="guru-grid">
+      <?php foreach ($data['Kepala Sekolah'] as $row): ?>
+        <div class="guru-card">
+          <div class="guru-image-wrapper">
+            <img src="<?= $row['image']; ?>" alt="<?= $row['nama']; ?>">
+          </div>
+          <div class="guru-info">
+            <div class="guru-nama"><?= $row['nama']; ?></div>
+            <div class="guru-jabatan"><?= $row['jabatan']; ?></div>
+          </div>
         </div>
-        <a href="kelola-admin" class="list-group-item list-group-item-action <?= ($currentPage == 'kelola-admin.php') ? 'active-page' : '' ?>">
-          <i class="fas fa-user-shield me-2"></i> Kelola Admin
-        </a>
+      <?php endforeach; ?>
     </div>
+  <?php endif; ?>
+
+
+  <!-- Wakil Kepala Sekolah -->
+  <?php if (count($data['Wakil Kepala Sekolah']) > 0): ?>
+    <h3 class="kategori-title">Wakil Kepala Sekolah</h3>
+    <div class="guru-grid">
+      <?php foreach ($data['Wakil Kepala Sekolah'] as $row): ?>
+        <div class="guru-card">
+          <div class="guru-image-wrapper">
+            <img src="<?= $row['image']; ?>" alt="<?= $row['nama']; ?>">
+          </div>
+          <div class="guru-info">
+            <div class="guru-nama"><?= $row['nama']; ?></div>
+            <div class="guru-jabatan"><?= $row['jabatan']; ?></div>
+          </div>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+
+
+  <!-- Staff -->
+  <?php if (count($data['Staff']) > 0): ?>
+    <h3 class="kategori-title">Staff</h3>
+    <div class="guru-grid">
+      <?php foreach ($data['Staff'] as $row): ?>
+        <div class="guru-card">
+          <div class="guru-image-wrapper">
+            <img src="<?= $row['image']; ?>" alt="<?= $row['nama']; ?>">
+          </div>
+          <div class="guru-info">
+            <div class="guru-nama"><?= $row['nama']; ?></div>
+            <div class="guru-jabatan"><?= $row['jabatan']; ?></div>
+          </div>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+
+
+  <!-- Guru -->
+  <?php if (count($data['Guru']) > 0): ?>
+    <h3 class="kategori-title">Guru</h3>
+    <div class="guru-grid">
+      <?php foreach ($data['Guru'] as $row): ?>
+        <div class="guru-card">
+          <div class="guru-image-wrapper">
+            <img src="<?= $row['image']; ?>" alt="<?= $row['nama']; ?>">
+          </div>
+          <div class="guru-info">
+            <div class="guru-nama"><?= $row['nama']; ?></div>
+            <div class="guru-jabatan"><?= $row['jabatan']; ?></div>
+          </div>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+
+</section>
+
+
+<!-- FOOTER -->
+
+<div class="footer-map-content">
+  <!-- Kiri: Judul & Alamat -->
+  <div class="map-text">
+    <h4>Lokasi Kami</h4>
+    <p style="color:rgb(250, 250, 250); font-size: 14px; margin-bottom: 10px;">
+      <?= htmlspecialchars($kontak['alamat'] ?? 'Alamat belum tersedia') ?>
+    </p>
   </div>
 
-  <!-- Page Content -->
-  <div id="page-content-wrapper" class="w-100">
-    <nav class="navbar navbar-expand navbar-dark bg-dark px-3 border-bottom">
-      <!-- Tombol toggle sidebar -->
-      <button class="btn btn-light me-2" id="sidebarToggle">
-        <i class="fas fa-bars"></i>
-      </button>
+  <!-- Tengah: Google Maps -->
+  <div class="map-iframe">
+    <?php if (!empty($kontak['link_gmaps'])): ?>
+      <iframe 
+        src="<?= htmlspecialchars($kontak['link_gmaps']) ?>" 
+        width="100%" height="180" style="border:0; border-radius:8px;" 
+        allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade">
+      </iframe>
+    <?php else: ?>
+      <p>Alamat lokasi belum tersedia.</p>
+    <?php endif; ?>
+  </div>
 
-      <!-- Profil (kanan atas) -->
-      <!-- Profil (kanan atas) -->
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle text-white" id="navbarDropdown" href="#" role="button" data-bs-toggle="dropdown">
-            <i class="fas fa-user fa-fw" style="color: white;"></i>
-            </a>
-            <ul class="dropdown-menu dropdown-menu-end shadow">
-            <li>
-                <a class="dropdown-item d-flex align-items-center" href="profil-admin">
-                <i class="fas fa-id-card me-2 text-secondary"></i> Profil Saya
-                </a>
-            </li>
-            <li><hr class="dropdown-divider" /></li>
-            <li>
-                <a class="dropdown-item d-flex align-items-center text-danger" href="logout">
-                <i class="fas fa-sign-out-alt me-2"></i> Logout
-                </a>
-            </li>
-            </ul>
-        </li>
-        </ul>
-    </nav>
+  <!-- Kanan: Kontak Kami + Ikon Sosial -->
+  <div class="map-contact">
+    <h4>Kontak Kami</h4>
+    <div class="footer-icons">
+      <?php if (!empty($kontak['email'])): ?>
+        <a href="https://mail.google.com/mail/?view=cm&fs=1&to=<?= urlencode($kontak['email']) ?>" 
+          target="_blank" 
+          title="Email">
+          <i class="fas fa-envelope"></i>
+        </a>
+      <?php endif; ?>
 
+      <?php if (!empty($kontak['no_whatsapp'])): ?>
+        <a href="https://wa.me/<?= preg_replace('/\D/', '', $kontak['no_whatsapp']) ?>" target="_blank" title="WhatsApp">
+          <i class="fab fa-whatsapp"></i>
+        </a>
+      <?php endif; ?>
 
-  <div class="container mt-4">
-    <h2>Data Guru & Staff</h2>
+      <?php if (!empty($kontak['instagram'])): ?>
+        <a href="https://instagram.com/<?= htmlspecialchars($kontak['instagram']) ?>" target="_blank" title="Instagram">
+          <i class="fab fa-instagram"></i>
+        </a>
+      <?php endif; ?>
 
-    <?php if (isset($_SESSION['success'])): ?>
-<div class="alert alert-secondary alert-dismissible fade show" role="alert">
-    <?= $_SESSION['success']; unset($_SESSION['success']); ?>
-    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-</div>
-<?php endif; ?>
+      <?php if (!empty($kontak['facebook'])): ?>
+        <a href="<?= htmlspecialchars($kontak['facebook']) ?>" target="_blank" title="Facebook">
+          <i class="fab fa-facebook"></i>
+        </a>
+      <?php endif; ?>
 
+      <?php if (!empty($kontak['youtube'])): ?>
+        <a href="<?= htmlspecialchars($kontak['youtube']) ?>" target="_blank" title="YouTube">
+          <i class="fab fa-youtube"></i>
+        </a>
+      <?php endif; ?>
 
-    <!-- FORM TAMBAH / EDIT -->
-    <div class="card mb-4">
-        <div class="card-header"><?= $editData ? 'Edit Guru / Staff' : 'Tambah Guru / Staff' ?></div>
-        <div class="card-body">
-            <form method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="id" value="<?= $editData['id'] ?? '' ?>">
-                <input type="hidden" name="image_lama" value="<?= $editData['image'] ?? '' ?>">
-
-                <div class="mb-2">
-                    <label>ID (Optional)</label>
-                    <input type="number" name="custom_id" class="form-control" value="<?= $editData['id'] ?? '' ?>">
-                </div>
-
-                <div class="mb-3">
-                    <label for="nama" class="form-label">Nama</label>
-                    <input type="text" id="nama" name="nama" class="form-control" required value="<?= htmlspecialchars($editData['nama'] ?? '') ?>">
-                </div>
-
-                <div class="mb-3">
-                    <label for="jabatan" class="form-label">Jabatan</label>
-                    <input type="text" id="jabatan" name="jabatan" class="form-control" required value="<?= htmlspecialchars($editData['jabatan'] ?? '') ?>">
-                </div>
-
-                <div class="mb-3">
-                    <label for="image" class="form-label">Foto</label>
-                    <input type="file" id="image" name="image" class="form-control">
-                    <?php if (!empty($editData['image'])): ?>
-                        <div class="mt-2">
-                            <small>Foto saat ini:</small><br>
-                            <img src="<?= htmlspecialchars($editData['image']) ?>" alt="Foto Guru" style="max-height: 80px;">
-                        </div>
-                    <?php endif; ?>
-                </div>
-
-                <button type="submit" name="<?= $editData ? 'update' : 'tambah' ?>" class="btn btn-primary">
-                    <?= $editData ? 'Update' : 'Tambah' ?>
-                </button>
-                <?php if ($editData): ?>
-                    <a href="guru-dan-staff" class="btn btn-secondary">Batal</a>
-                <?php endif; ?>
-            </form>
-        </div>
     </div>
-
-    <!-- TABEL DATA -->
-    <h5>Daftar Guru & Staff</h5>
-    <table class="table table-bordered table-striped align-middle">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Nama</th>
-                <th>Jabatan</th>
-                <th>Foto</th>
-                <th>Aksi</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if (!empty($data)): foreach ($data as $row): ?>
-                <tr>
-                    <td><?= $row['id'] ?></td>
-                    <td><?= htmlspecialchars($row['nama']) ?></td>
-                    <td><?= htmlspecialchars($row['jabatan']) ?></td>
-                    <td>
-                        <?php if (!empty($row['image'])): ?>
-                            <img src="<?= htmlspecialchars($row['image']) ?>" alt="Foto Guru" style="max-height: 60px;">
-                        <?php else: ?>
-                            -
-                        <?php endif; ?>
-                    </td>
-                    <td>
-                      <a href="guru-dan-staff?edit=<?= $row['id'] ?>" class="btn btn-sm btn-warning">
-                        <i class="fas fa-edit me-1"></i> Edit
-                      </a>
-                      <a href="guru-dan-staff?hapus=<?= $row['id'] ?>" 
-                        class="btn btn-sm btn-danger" 
-                        onclick="return confirm('Yakin ingin hapus data ini?')">
-                        <i class="fas fa-trash-alt me-1"></i> Hapus
-                      </a>
-                    </td>
-
-                </tr>
-            <?php endforeach; else: ?>
-                <tr><td colspan="5" class="text-center">Belum ada data guru & staff.</td></tr>
-            <?php endif; ?>
-        </tbody>
-    </table>
+  </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  document.getElementById("sidebarToggle").addEventListener("click", function () {
-    document.getElementById("wrapper").classList.toggle("toggled");
-  });
 
-</script>
+
+
+<div class="footer-copyright">
+    &copy; <?= date('Y') ?> SD Muhammadiyah Purwokerto. All rights reserved.
+  </div>
+
+</form>
+  
 
 </body>
 </html>
-

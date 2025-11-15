@@ -1,316 +1,657 @@
 <?php
-// koneksi database
-session_start();
-include '../db.php';
+include '../db.php';  // koneksi database
 
 $currentPage = basename($_SERVER['PHP_SELF']);
 
-$edit_data = null;
+$isHome = ($currentPage == 'homepage.php');
+$isProfil = in_array($currentPage, ['sejarah.php', 'visi-dan-misi.php', 'struktur-organisasi.php']);
+$isBerita = ($currentPage == 'berita.php');
+$isPPDB = ($currentPage == 'ppdb.php');
+$isPrestasi = ($currentPage == 'prestasi.php');
+$isInformasi = in_array($currentPage, ['ekstrakulikuler.php', 'fasilitas.php', 'guru-dan-staff.php', 'alumni.php']);
+$isAdmin = ($currentPage == 'login.php');
 
-// Proses simpan data
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nama = $_POST['nama'];
-    $tahun_masuk = $_POST['tahun_masuk'];
-    $tahun_lulus = $_POST['tahun_lulus'];
-    $pesan = $_POST['pesan'];
-
-    if (isset($_GET['edit_id'])) {
-        // UPDATE data
-        $id = $_GET['edit_id'];
-        $stmt = $conn->prepare("UPDATE alumni SET nama=?, tahun_masuk=?, tahun_lulus=?, pesan=? WHERE id=?");
-        $stmt->bind_param("ssssi", $nama, $tahun_masuk, $tahun_lulus, $pesan, $id);
-        $stmt->execute();
-
-        header("Location: alumni?sukses=edit");
-    } else {
-        // INSERT data baru
-        $stmt = $conn->prepare("INSERT INTO alumni (nama, tahun_masuk, tahun_lulus, pesan) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("ssss", $nama, $tahun_masuk, $tahun_lulus, $pesan);
-        $stmt->execute();
-
-        header("Location: alumni?sukses=tambah");
-    }
-    exit();
+// Ambil gambar header
+$sqlGambar = "SELECT gambar_header FROM header LIMIT 1";
+$resultGambar = $conn->query($sqlGambar);
+$gambarHeader = "default-header.jpg";
+if ($resultGambar && $resultGambar->num_rows > 0) {
+    $rowGambar = $resultGambar->fetch_assoc();
+    $gambarHeader = $rowGambar['gambar_header'];
 }
 
-// ==== PROSES HAPUS ====
-if (isset($_GET['hapus_id'])) {
-    $id = $_GET['hapus_id'];
-    $conn->query("DELETE FROM alumni WHERE id = $id");
-    header("Location: alumni?sukses=hapus");
-    exit();
+// Ambil data alumni dari database dan simpan ke array
+$result = mysqli_query($conn, "SELECT * FROM alumni ORDER BY tahun_masuk DESC");
+$alumni = [];
+
+while ($row = mysqli_fetch_assoc($result)) {
+  $alumni[] = $row;
 }
 
-// Ambil data
-$data = $conn->query("SELECT * FROM alumni ORDER BY tahun_lulus DESC");
+/// Ambil data kontak (misalnya hanya 1 data, karena kontak biasanya satu set)
+$query = "SELECT alamat, email, no_whatsapp, instagram, facebook, youtube, link_gmaps FROM kontak LIMIT 1";
+$result = mysqli_query($conn, $query);
 
-// Ambil data untuk edit
-if (isset($_GET['edit_id'])) {
-    $id = $_GET['edit_id'];
-    $result = $conn->query("SELECT * FROM alumni WHERE id = $id");
-    $edit_data = $result->fetch_assoc();
+// Inisialisasi default
+$kontak = [
+    'alamat' => '',
+    'email' => '',
+    'no_whatsapp' => '',
+    'instagram' => '',
+    'facebook' => '',
+    'youtube' => '',
+    'link_gmaps' => ''
+];
+
+// Ambil data dari database jika tersedia
+if ($result && mysqli_num_rows($result) > 0) {
+    $kontak = mysqli_fetch_assoc($result);
 }
+
+// Tutup koneksi database
+mysqli_close($conn);
 ?>
 
 
 
 
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Dashboard Admin</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title></title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@9/swiper-bundle.min.css"/>
 <style>
-  body { margin: 0; padding: 0; }
-  #wrapper { display: flex; width: 100%; }
-  #sidebar-wrapper {
-    min-width: 250px;
-    max-width: 250px;
-    background-color: #003366;
-    color: white;
-    min-height: 100vh;
+    body {
+  font-family: 'Poppins', sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+/* === NAVIGATION STYLE === */
+    nav {
+  width: 100%;
+  position: fixed;
+  background: #003366;
+  padding: 8px 0;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  box-sizing: border-box;
+}
+.nav-container {
+  max-width: 1300px; /* biar lebih lebar */
+  margin: 0 40px 0 auto; /* dorong ke kanan */
+  display: flex;
+  justify-content: flex-end; /* tetap kanan */
+  align-items: center;
+  height: 40px;
+}
+
+
+nav ul {
+  list-style: none;
+  display: flex;
+  margin: 0;
+  margin-left: auto;
+  padding: 0;
+  font-size: 14px;
+}
+nav ul li {
+  position: relative;
+  margin-left: 15px; /* jarak antar menu lebih renggang */
+}
+
+nav ul li:first-child {
+  margin-left: 0;
+}
+/* === Umum === */
+nav ul li a {
+  text-decoration: none;
+  color: white;
+  font-weight: bold;
+  padding: 5px 10px;
+  border-radius: 5px;
+  transition: background-color 0.3s, color 0.3s;
+  display: inline-block;
+}
+
+/* Hover semua menu aktif */
+nav ul li a:hover {
+  background-color: #FFCC00;
+  color: #003366;
+}
+
+/* Aktif menu biasa (HOME, BERITA, dsb) */
+nav ul li a.active {
+  background-color: transparent;
+  color: #FFCC00 !important;
+  font-weight: bold;
+}
+
+/* Aktif untuk parent menu (PROFIL, INFORMASI) */
+nav ul li a.parent-active {
+  background-color: transparent;
+  color: #FFCC00 !important;
+  font-weight: bold;
+}
+
+/* === DROPDOWN STYLE === */
+.nav-container ul li .dropdown-menu {
+  display: none;
+  position: absolute;
+  background-color: white;
+  top: 100%;
+  left: 0;
+  min-width: 180px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  padding: 0;
+  border-radius: 5px;
+}
+
+.nav-container ul li:hover .dropdown-menu {
+  display: block;
+}
+
+.nav-container ul li .dropdown-menu li {
+  width: 100%;
+  margin: 0;
+}
+
+.nav-container ul li .dropdown-menu li a {
+  color: #003366;
+  padding: 10px 15px;
+  display: inline-block;
+  font-weight: normal;
+  text-decoration: none;
+  position: relative;
+  transition: color 0.3s ease, font-weight 0.3s ease;
+}
+
+/* Efek underline kuning saat hover submenu */
+.nav-container ul li .dropdown-menu li a::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  width: 80%;
+  height: 2px;
+  background-color: #FFCC00;
+  transition: transform 0.3s ease;
+}
+
+.nav-container ul li .dropdown-menu li a:hover {
+  font-weight: bold;
+}
+
+.nav-container ul li .dropdown-menu li a:hover::after {
+  transform: translateX(-50%) scaleX(1);
+}
+
+/* Header */
+.alumni-header {
+  position: relative;
+  background-image: url('../image/sekolah/gambar_sekolah1.jpg');
+  background-size: cover;
+  background-position: center;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  padding-left: 40px;
+  color: white;
+  font-family: 'Poppins', sans-serif;
+}
+
+.alumni-header  .overlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background-color: rgba(75, 115, 190, 0.7);
+  z-index: 1;
+}
+
+.alumni-header  .header-content {
+  position: relative;
+  z-index: 2;
+}
+
+.breadcrumb {
+  font-size: 16px;
+  margin: 0;
+}
+
+.judul-header {
+  font-size: 40px;
+  font-weight: bold;
+  margin: 10px 0 0 0;
+}
+/*  ALUMNI */
+.alumni-section {
+  padding: 40px;
+  background-color: #f9f9f9;
+}
+
+.alumni-title {
+  font-size: 36px;
+  font-weight: bold;
+  margin-bottom: 30px;
+}
+
+.search-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+
+.search-container input {
+  width: 300px;
+  font-size: 16px;
+  padding: 12px 16px;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  outline: none;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.search-container button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-left: 10px;
+  font-size: 18px;
+}
+
+/* Tambahan untuk filter */
+.filter-container {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-group label {
+  font-size: 14px;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.filter-group select {
+  padding: 10px;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 2px solid #ccc;
+  width: 160px;
+  background-color: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.alumni-table-wrapper {
+  overflow-x: auto;
+}
+
+.alumni-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #ccc;
+  background-color: white;
+}
+
+.alumni-table th {
+  background-color: rgba(0, 0, 0, 1);
+  color: white;
+  padding: 10px;
+  text-align: center;
+  border: 1px solid #ccc;
+}
+
+.alumni-table td {
+  padding: 10px;
+  text-align: center;
+  border: 1px solid #ccc;
+}
+
+.alumni-table tr:nth-child(even) {
+  background-color: #eaf4ff;
+}
+
+
+
+/* Footer Container */
+.footer-map-content {
+  background-color: #003366;
+  color: #fafafa;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 30px 40px;
+  margin-top: 80px;
+  gap: 50px;
+}
+
+/* Kolom Kiri, Tengah, Kanan */
+.footer-map-content > div {
+  flex: 1;
+  min-width: 250px;
+}
+
+/* Judul */
+.footer-map-content h4 {
+  margin-bottom: 10px;
+  font-size: 18px;
+  color: #ffffff;
+}
+
+/* Paragraf */
+.footer-map-content p {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  color: #f0f0f0;
+}
+
+/* Map iframe */
+.map-iframe iframe {
+  width: 100%;
+  height: 180px;
+  margin-top: 20px;
+  border: 0;
+  border-radius: 8px;
+}
+.map-contact {
+  margin-left: 60px; 
+}
+/* Ikon Sosial */
+.footer-icons {
+  display: flex;
+  gap: 15px;
+  font-size: 26px;
+  margin-top: 30px;
+}
+
+.footer-icons a {
+ color: #fafafa;
+  transition: color 0.3s;
+}
+/* Warna muncul hanya saat hover */
+.footer-icons a[title="WhatsApp"]:hover { color: #25D366; }
+.footer-icons a[title="Instagram"]:hover { color: #C13584; }
+.footer-icons a[title="Facebook"]:hover { color: #1877F2; }
+.footer-icons a[title="Email"]:hover { color: #aa2215; }
+.footer-icons a[title="YouTube"]:hover {color: #FF0000;}
+
+
+.footer-copyright {
+  max-width: 100%;
+  background-color: #064c91; /* biru medium lebih terang */
+  padding: 10px 40px;
+  font-size: 17px;
+  color: #fefefe; /* warna teks putih kebiruan */
+  text-align: center;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+/* Responsive: stacked on small screens */
+@media (max-width: 650px) {
+  .footer {
+    flex-direction: column;
+    align-items: center;
   }
-  .list-group-item {
-    border: none;
-    background-color: #003366;
-    color: white;
+  .footer-map, .footer-icons {
+    flex: unset;
+    width: 100%;
   }
-  .list-group-item:hover {
-    background-color: #495057;
+  .footer-icons {
+    flex-direction: row;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 15px;
   }
-  .list-group-item.active-page {
-    background-color: #6c757d !important; /* abu-abu */
-    color: white !important;
-  }
-  .collapse .list-group-item {
-    padding-left: 2rem;
-  }
-  #page-content-wrapper {
-    flex-grow: 1;
-  }
-  .navbar-dark .navbar-nav .nav-link {
-    color: white;
-  }
-  .navbar-dark .navbar-nav .nav-link:hover {
-    color: #ddd;
-  }
-  .btn-primary {
-    background-color: #003366;
-    border-color: #003366;
-  }
-  .btn-primary:hover {
-    background-color: #002244;
-    border-color: #002244;
-  }
-  .custom-glow-btn {
-    background-color: #1a1a2e;
-    color: #fff;
-    border: 2px solid #3c8dbc;
-    border-radius: 12px;
-    box-shadow: 0 0 10px rgba(60, 141, 188, 0.5);
-    transition: all 0.3s ease-in-out;
-  }
-  .custom-glow-btn:hover {
-    background-color: #3c8dbc;
-    box-shadow: 0 0 15px rgba(60, 141, 188, 0.7);
-  }
-  #wrapper.toggled #sidebar-wrapper {
-  margin-left: -250px;
-  transition: margin 0.3s ease;
-  }
-  #sidebar-wrapper {
-  transition: margin 0.3s ease;
-  }
+}
 
 </style>
 </head>
 <body>
-<div class="d-flex" id="wrapper">
-    <!-- Sidebar -->
-  <div id="sidebar-wrapper" class="p-3">
-    <div class="sidebar-heading text-white fw-bold mb-4">Dashboard Admin</div>
-    <div class="list-group list-group-flush">
-      <a href="home" class="list-group-item list-group-item-action"> <i class="fas fa-home me-2"></i>Home</a>
-      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
-        data-bs-toggle="collapse" href="#profilMenu">
-        <div class="d-flex align-items-center">
-          <i class="fas fa-school me-2"></i> <span>Profil</span>
-        </div>
-        <i class="fas fa-caret-down"></i>
-      </a>
+ <nav>
+  <div class="nav-container">
+    <ul>
+      <li>
+        <a href="homepage" class="<?= $currentPage === 'homepage.php' ? 'active' : '' ?>">HOME</a>
+      </li>
 
-      <div class="collapse" id="profilMenu">
-        <a href="sejarah" class="list-group-item list-group-item-action"><i class="fas fa-book me-2"></i>Sejarah</a>
-        <a href="visi-misi" class="list-group-item list-group-item-action"><i class="fas fa-lightbulb me-2"></i> Visi dan Misi</a>
-        <a href="struktur-organisasi" class="list-group-item list-group-item-action"><i class="fas fa-sitemap me-2"></i>Struktur Organisasi</a>
+      <li>
+    <a href="" class="no-link">PROFIL</a>
+    <ul class="dropdown-menu">
+        <li><a href="sejarah" class="<?= $currentPage == 'sejarah.php' ? 'active' : '' ?>">Sejarah</a></li>
+        <li><a href="visi-dan-misi" class="<?= $currentPage == 'visi-dan-misi.php' ? 'active' : '' ?>">Visi dan Misi</a></li>
+        <li><a href="struktur-organisasi" class="<?= $currentPage == 'struktur-organisasi.php' ? 'active' : '' ?>">Struktur Organisasi</a></li>
+    </ul>
+</li>
+
+<li><a href="berita" class="<?= $isBerita ? 'active' : '' ?>">BERITA</a></li>
+<li><a href="ppdb" class="<?= $isPPDB ? 'active' : '' ?>">PPDB</a></li>
+<li><a href="prestasi" class="<?= $isPrestasi ? 'active' : '' ?>">PRESTASI</a></li>
+
+<li>
+    <a href="" class="<?= 'no-link' . ($isInformasi ? ' parent-active' : '') ?>">INFORMASI</a>
+    <ul class="dropdown-menu">
+        <li><a href="ekstrakulikuler" class="<?= $currentPage == 'ekstrakulikuler.php' ? 'active' : '' ?>">Ekstrakulikuler</a></li>
+        <li><a href="fasilitas" class="<?= $currentPage == 'fasilitas.php' ? 'active' : '' ?>">Fasilitas</a></li>
+        <li><a href="guru-dan-staff" class="<?= $currentPage == 'guru-dan-staff.php' ? 'active' : '' ?>">Guru dan Staff</a></li>
+        <li><a href="alumni" class="<?= $currentPage == 'alumni.php' ? 'active' : '' ?>">Alumni</a></li>
+    </ul>
+</li>
+
+<li>
+    <a href="" class="<?= 'no-link' . ($isAdmin ? ' parent-active' : '') ?>">ADMIN</a>
+    <ul class="dropdown-menu">
+        <li><a href="../admin/login" class="<?= $currentPage == 'login.php' ? 'active' : '' ?>">Login</a></li>
+    </ul>
+</li>
+
+      </ul>
+    </div>
+  </nav>
+
+  
+<!-- HEADER Struktur Organisasi -->
+<section class="alumni-header">
+  <div class="overlay"></div>
+  <div class="container header-content">
+    <p class="breadcrumb">Informasi / Alumni</p>
+    <h1 class="judul-header">Alumni</h1>
+  </div>
+</section>
+
+
+<!-- KONTEN -->
+<section class="alumni-section">
+  <div class="filter-search-wrapper">
+    <!-- Search -->
+    <div class="search-container">
+      <input type="text" id="searchInput" placeholder="Cari...">
+      <button><i class="fa fa-search"></i></button>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-container">
+      <div class="filter-group">
+        <label for="filterMasuk">Tahun Masuk:</label>
+        <select id="filterMasuk">
+          <option value="">Semua</option>
+          <?php
+          $tahunMasuk = array_unique(array_column($alumni, 'tahun_masuk'));
+          sort($tahunMasuk);
+          foreach ($tahunMasuk as $tahun) {
+            echo "<option value=\"$tahun\">$tahun</option>";
+          }
+          ?>
+        </select>
       </div>
-      <a href="berita" class="list-group-item list-group-item-action"><i class="fas fa-newspaper me-2"></i> Berita</a>
-      <a href="ppdb" class="list-group-item list-group-item-action"><i class="fas fa-users me-2"></i> PPDB</a>
-      <a href="prestasi" class="list-group-item list-group-item-action"><i class="fas fa-trophy me-2"></i> Prestasi</a>
-      <!-- INFORMASI MENU -->
-        <a class="list-group-item list-group-item-action d-flex align-items-center" 
-          data-bs-toggle="collapse" 
-          href="#informasiMenu" 
-          aria-expanded="<?= in_array($currentPage, ['ekstrakulikuler.php', 'fasilitas.php', 'guru-dan-staff.php', 'alumni.php']) ? 'true' : 'false' ?>">
-          <i class="fas fa-info-circle me-2"></i> Informasi <i class="fas fa-caret-down ms-auto"></i>
-        </a>
-
-
-        <div class="collapse <?= in_array($currentPage, ['ekstrakulikuler.php', 'fasilitas.php', 'guru-dan-staff.php', 'alumni.php']) ? 'show' : '' ?>" id="informasiMenu">
-          <a href="ekstrakulikuler" class="list-group-item list-group-item-action <?= ($currentPage == 'ekstrakulikuler.php') ? 'active-page' : '' ?>"><i class="fas fa-swimmer me-2"></i> Ekstrakurikuler</a>
-          <a href="fasilitas" class="list-group-item list-group-item-action <?= ($currentPage == 'fasilitas.php') ? 'active-page' : '' ?>"><i class="fas fa-building me-2"></i> Fasilitas</a>
-          <a href="guru-dan-staff" class="list-group-item list-group-item-action <?= ($currentPage == 'guru-dan-staff.php') ? 'active-page' : '' ?>"><i class="fas fa-chalkboard-teacher me-2"></i> Guru & Staff</a>
-          <a href="alumni" class="list-group-item list-group-item-action <?= ($currentPage == 'alumni.php') ? 'active-page' : '' ?>"><i class="fas fa-user-graduate me-2"></i> Alumni</a>
-        </div>
-        <a href="kelola-admin" class="list-group-item list-group-item-action <?= ($currentPage == 'kelola-admin.php') ? 'active-page' : '' ?>">
-          <i class="fas fa-user-shield me-2"></i> Kelola Admin
-        </a>
+      <div class="filter-group">
+        <label for="filterLulus">Tahun Lulus:</label>
+        <select id="filterLulus">
+          <option value="">Semua</option>
+          <?php
+          $tahunLulus = array_unique(array_column($alumni, 'tahun_lulus'));
+          sort($tahunLulus);
+          foreach ($tahunLulus as $tahun) {
+            echo "<option value=\"$tahun\">$tahun</option>";
+          }
+          ?>
+        </select>
+      </div>
     </div>
   </div>
 
-  <!-- Page Content -->
-  <div id="page-content-wrapper" class="w-100">
-    <nav class="navbar navbar-expand navbar-dark bg-dark px-3 border-bottom">
-      <!-- Tombol toggle sidebar -->
-      <button class="btn btn-light me-2" id="sidebarToggle">
-        <i class="fas fa-bars"></i>
-      </button>
-
-      <!-- Profil (kanan atas) -->
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle text-white" id="navbarDropdown" href="#" role="button" data-bs-toggle="dropdown">
-            <i class="fas fa-user fa-fw" style="color: white;"></i>
-            </a>
-            <ul class="dropdown-menu dropdown-menu-end shadow">
-            <li>
-                <a class="dropdown-item d-flex align-items-center" href="profil-admin">
-                <i class="fas fa-id-card me-2 text-secondary"></i> Profil Saya
-                </a>
-            </li>
-            <li><hr class="dropdown-divider" /></li>
-            <li>
-                <a class="dropdown-item d-flex align-items-center text-danger" href="logout">
-                <i class="fas fa-sign-out-alt me-2"></i> Logout
-                </a>
-            </li>
-            </ul>
-        </li>
-        </ul>
-    </nav>
+  <!-- Tabel Alumni -->
+  <div class="alumni-table-wrapper">
+    <table class="alumni-table" id="alumniTable">
+      <thead>
+        <tr>
+          <th>No.</th>
+          <th>Nama</th>
+          <th>Tahun Masuk</th>
+          <th>Tahun Lulus</th>
+          <th>Pesan / Testimoni</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php $no = 1; foreach ($alumni as $row): ?>
+        <tr>
+          <td><?= $no++; ?></td>
+          <td><?= htmlspecialchars($row['nama']); ?></td>
+          <td><?= htmlspecialchars($row['tahun_masuk']); ?></td>
+          <td><?= htmlspecialchars($row['tahun_lulus']); ?></td>
+          <td><?= nl2br(htmlspecialchars($row['pesan'])); ?></td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</section>
 
 
-  <!-- DATA ALUMNI -->
-    <div class="content-wrapper p-4">
-      <h3 class="fw-bold text-dark">Data Alumni</h3>
 
-      <?php if (isset($_GET['sukses'])): ?>
-        <?php
-          switch ($_GET['sukses']) {
-              case 'tambah':
-                  $pesan = "Data alumni berhasil <strong>ditambahkan</strong>.";
-                  $warna = "success";
-                  break;
-              case 'edit':
-                  $pesan = "Data alumni berhasil <strong>diperbarui</strong>.";
-                  $warna = "info";
-                  break;
-              case 'hapus':
-                  $pesan = "Data alumni berhasil <strong>dihapus</strong>.";
-                  $warna = "danger";
-                  break;
-              default:
-                  $pesan = "Operasi berhasil dilakukan.";
-                  $warna = "secondary";
-                  break;
-          }
-        ?>
-        <div class="alert alert-<?= $warna ?> alert-dismissible fade show" role="alert">
-          <?= $pesan ?>
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
+
+
+<!-- FOOTER -->
+
+<div class="footer-map-content">
+  <!-- Kiri: Judul & Alamat -->
+  <div class="map-text">
+    <h4>Lokasi Kami</h4>
+    <p style="color:rgb(250, 250, 250); font-size: 14px; margin-bottom: 10px;">
+      <?= htmlspecialchars($kontak['alamat'] ?? 'Alamat belum tersedia') ?>
+    </p>
+  </div>
+
+  <!-- Tengah: Google Maps -->
+  <div class="map-iframe">
+    <?php if (!empty($kontak['link_gmaps'])): ?>
+      <iframe 
+        src="<?= htmlspecialchars($kontak['link_gmaps']) ?>" 
+        width="100%" height="180" style="border:0; border-radius:8px;" 
+        allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade">
+      </iframe>
+    <?php else: ?>
+      <p>Alamat lokasi belum tersedia.</p>
+    <?php endif; ?>
+  </div>
+
+  <!-- Kanan: Kontak Kami + Ikon Sosial -->
+  <div class="map-contact">
+    <h4>Kontak Kami</h4>
+    <div class="footer-icons">
+      <?php if (!empty($kontak['email'])): ?>
+        <a href="https://mail.google.com/mail/?view=cm&fs=1&to=<?= urlencode($kontak['email']) ?>" 
+          target="_blank" 
+          title="Email">
+          <i class="fas fa-envelope"></i>
+        </a>
       <?php endif; ?>
 
+      <?php if (!empty($kontak['no_whatsapp'])): ?>
+        <a href="https://wa.me/<?= preg_replace('/\D/', '', $kontak['no_whatsapp']) ?>" target="_blank" title="WhatsApp">
+          <i class="fab fa-whatsapp"></i>
+        </a>
+      <?php endif; ?>
 
-      <!-- Form Tambah/Edit -->
-      <form action="alumni.php<?= isset($_GET['edit_id']) ? '?edit_id=' . $_GET['edit_id'] : '' ?>" method="post" class="mb-4 p-3 bg-light rounded shadow-sm">
-        <div class="mb-3">
-          <label for="nama" class="form-label">Nama:</label>
-          <input type="text" name="nama" id="nama" class="form-control" required value="<?= htmlspecialchars($edit_data['nama'] ?? '') ?>">
-        </div>
-        <div class="mb-3">
-          <label for="tahun_masuk" class="form-label">Tahun Masuk:</label>
-          <input type="number" name="tahun_masuk" id="tahun_masuk" class="form-control" required min="1900" max="2099" value="<?= htmlspecialchars($edit_data['tahun_masuk'] ?? date('Y')) ?>">
-        </div>
-        <div class="mb-3">
-          <label for="tahun_lulus" class="form-label">Tahun Lulus:</label>
-          <input type="number" name="tahun_lulus" id="tahun_lulus" class="form-control" required min="1900" max="2099" value="<?= htmlspecialchars($edit_data['tahun_lulus'] ?? date('Y')) ?>">
-        </div>
-        <div class="mb-3">
-          <label for="pesan" class="form-label">Pesan / Testimoni:</label>
-          <textarea name="pesan" id="pesan" class="form-control" rows="3" placeholder="Masukkan pesan atau testimoni alumni..."><?= htmlspecialchars($edit_data['pesan'] ?? '') ?></textarea>
-        </div>
-        <button type="submit" class="btn btn-primary"><?= isset($edit_data) ? 'Simpan Perubahan' : 'Tambah' ?></button>
-        <?php if (isset($edit_data)): ?>
-          <a href="alumni.php" class="btn btn-secondary">Batal</a>
-        <?php endif; ?>
-      </form>
+      <?php if (!empty($kontak['instagram'])): ?>
+        <a href="https://instagram.com/<?= htmlspecialchars($kontak['instagram']) ?>" target="_blank" title="Instagram">
+          <i class="fab fa-instagram"></i>
+        </a>
+      <?php endif; ?>
 
-      <!-- Tabel Data Alumni -->
-      <div class="table-responsive">
-        <table class="table table-bordered table-striped align-middle">
-          <thead class="table-dark">
-            <tr>
-              <th>No.</th>
-              <th>Nama</th>
-              <th>Tahun Masuk</th>
-              <th>Tahun Lulus</th>
-              <th>Pesan / Testimoni</th>
-              <th>Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php if ($data->num_rows > 0): ?>
-              <?php $no = 1; while ($row = $data->fetch_assoc()): ?>
-                <tr>
-                  <td><?= $no++ ?></td>
-                  <td><?= htmlspecialchars($row['nama']) ?></td>
-                  <td><?= htmlspecialchars($row['tahun_masuk']) ?></td>
-                  <td><?= htmlspecialchars($row['tahun_lulus']) ?></td>
-                  <td><?= nl2br(htmlspecialchars($row['pesan'])) ?></td>
-                  <td>
-                    <a href="alumni.php?edit_id=<?= $row['id'] ?>" class="btn btn-sm btn-warning">
-                      <i class="fas fa-edit me-1"></i> Edit
-                    </a>
-                    <a href="alumni.php?hapus_id=<?= $row['id'] ?>" 
-                      class="btn btn-sm btn-danger" 
-                      onclick="return confirm('Yakin ingin menghapus data ini?')">
-                      <i class="fas fa-trash-alt me-1"></i> Hapus
-                    </a>
-                  </td>
-                </tr>
-              <?php endwhile; ?>
-            <?php else: ?>
-              <tr><td colspan="6" class="text-center">Tidak ada data</td></tr>
-            <?php endif; ?>
-          </tbody>
-        </table>
-      </div>
+      <?php if (!empty($kontak['facebook'])): ?>
+        <a href="<?= htmlspecialchars($kontak['facebook']) ?>" target="_blank" title="Facebook">
+          <i class="fab fa-facebook"></i>
+        </a>
+      <?php endif; ?>
+
+      <?php if (!empty($kontak['youtube'])): ?>
+        <a href="<?= htmlspecialchars($kontak['youtube']) ?>" target="_blank" title="YouTube">
+          <i class="fab fa-youtube"></i>
+        </a>
+      <?php endif; ?>
+
     </div>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  document.getElementById("sidebarToggle").addEventListener("click", function () {
-    document.getElementById("wrapper").classList.toggle("toggled");
-  });
 
+
+
+<div class="footer-copyright">
+    &copy; <?= date('Y') ?> SD Muhammadiyah Purwokerto. All rights reserved.
+  </div>
+
+</form>
+
+<script>
+  const searchInput = document.getElementById('searchInput');
+  const filterMasuk = document.getElementById('filterMasuk');
+  const filterLulus = document.getElementById('filterLulus');
+  const table = document.getElementById('alumniTable').getElementsByTagName('tbody')[0];
+
+  function filterTable() {
+    const search = searchInput.value.toLowerCase();
+    const masuk = filterMasuk.value;
+    const lulus = filterLulus.value;
+
+    for (let row of table.rows) {
+      const nama = row.cells[1].textContent.toLowerCase();
+      const tahunMasuk = row.cells[2].textContent;
+      const tahunLulus = row.cells[3].textContent;
+
+      const cocokCari = nama.includes(search);
+      const cocokMasuk = !masuk || tahunMasuk === masuk;
+      const cocokLulus = !lulus || tahunLulus === lulus;
+
+      row.style.display = (cocokCari && cocokMasuk && cocokLulus) ? '' : 'none';
+    }
+  }
+
+  searchInput.addEventListener('input', filterTable);
+  filterMasuk.addEventListener('change', filterTable);
+  filterLulus.addEventListener('change', filterTable);
 </script>
+
+
 
 </body>
 </html>
-

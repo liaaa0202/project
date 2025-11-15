@@ -1,326 +1,617 @@
 <?php
-// koneksi database
-session_start();
-include '../db.php';
-
+include '../db.php';  // memanggil koneksi database dari file db.php
 
 $currentPage = basename($_SERVER['PHP_SELF']);
-$editData = null;
+$isHome      = ($currentPage==='homepage.php');
+$isProfil    = in_array($currentPage,['sejarah.php','visi-dan-misi.php','struktur-organisasi.php']);
+$isBerita    = ($currentPage==='berita.php');
+$isPPDB      = ($currentPage==='ppdb.php');
+$isPrestasi  = ($currentPage==='prestasi.php');
+$isInformasi = in_array($currentPage,['ekstrakulikuler.php','fasilitas.php','guru-dan-staff.php','alumni.php']);
+$isAdmin     = ($currentPage==='login.php');
 
-// Handle hapus
-if (isset($_GET['hapus'])) {
-    $id = intval($_GET['hapus']);
-    $conn->query("DELETE FROM prestasi WHERE id=$id");
-    $_SESSION['success'] = "Data prestasi berhasil dihapus.";
-    header("Location: prestasi");
-    exit;
+
+// Ambil gambar header
+$sqlGambar = "SELECT gambar_header FROM header LIMIT 1";
+$resultGambar = $conn->query($sqlGambar);
+$gambarHeader = "default-header.jpg";
+if ($resultGambar && $resultGambar->num_rows > 0) {
+    $rowGambar = $resultGambar->fetch_assoc();
+    $gambarHeader = $rowGambar['gambar_header'];
 }
 
-// Handle edit ambil data
-if (isset($_GET['edit'])) {
-    $id = intval($_GET['edit']);
-    $res = $conn->query("SELECT * FROM prestasi WHERE id=$id");
-    $editData = $res->fetch_assoc();
-}
+// --- Ambil data prestasi ---
+$tahunList = [];
+$allPrestasi = [];
 
-// Handle tambah
-if (isset($_POST['tambah'])) {
-    $nama = $conn->real_escape_string($_POST['nama']);
-    $kelas = $conn->real_escape_string($_POST['kelas']);
-    $nama_prestasi = $conn->real_escape_string($_POST['nama_prestasi']);
-    $tahun_pelajaran = $conn->real_escape_string($_POST['tahun_pelajaran']);
-
-    $conn->query("INSERT INTO prestasi (nama, kelas, nama_prestasi, tahun_pelajaran) 
-                  VALUES ('$nama', '$kelas', '$nama_prestasi', '$tahun_pelajaran')");
-    $_SESSION['success'] = "Data prestasi berhasil ditambahkan.";
-    header("Location: prestasi");
-    exit;
+// Ambil maksimal 4 tahun pelajaran terbaru
+$tahunQuery = $conn->query("SELECT DISTINCT tahun_pelajaran 
+                            FROM prestasi 
+                            ORDER BY tahun_pelajaran DESC 
+                            LIMIT 4");
+while ($row = $tahunQuery->fetch_assoc()) {
+    $tahunList[] = $row['tahun_pelajaran'];
 }
 
 
-// Handle update
-if (isset($_POST['update'])) {
-    $id = intval($_POST['id']);
-    $nama = $conn->real_escape_string($_POST['nama']);
-    $kelas = $conn->real_escape_string($_POST['kelas']);
-    $nama_prestasi = $conn->real_escape_string($_POST['nama_prestasi']);
-    $tahun_pelajaran = $conn->real_escape_string($_POST['tahun_pelajaran']);
-
-    $conn->query("UPDATE prestasi 
-                  SET nama='$nama', kelas='$kelas', nama_prestasi='$nama_prestasi', tahun_pelajaran='$tahun_pelajaran' 
-                  WHERE id=$id");
-    $_SESSION['success'] = "Data prestasi berhasil diperbarui.";
-    header("Location: prestasi");
-    exit;
+// Ambil semua prestasi sekaligus
+$prestasiQuery = $conn->query("SELECT * FROM prestasi ORDER BY tahun_pelajaran DESC");
+while ($row = $prestasiQuery->fetch_assoc()) {
+    $allPrestasi[$row['tahun_pelajaran']][] = $row;
 }
 
-// Ambil data prestasi
-$data = $conn->query("SELECT * FROM prestasi ORDER BY id DESC");
+
+/// Ambil data kontak (misalnya hanya 1 data, karena kontak biasanya satu set)
+$query = "SELECT alamat, email, no_whatsapp, instagram, facebook, youtube, link_gmaps FROM kontak LIMIT 1";
+$result = mysqli_query($conn, $query);
+
+// Inisialisasi default
+$kontak = [
+    'alamat' => '',
+    'email' => '',
+    'no_whatsapp' => '',
+    'instagram' => '',
+    'facebook' => '',
+    'youtube' => '',
+    'link_gmaps' => ''
+];
+
+// Ambil data dari database jika tersedia
+if ($result && mysqli_num_rows($result) > 0) {
+    $kontak = mysqli_fetch_assoc($result);
+}
+
+// Tutup koneksi database
+mysqli_close($conn);
+
+
 ?>
 
 
 
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Dashboard Admin</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title></title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@9/swiper-bundle.min.css"/>
 <style>
-  body { margin: 0; padding: 0; }
-  #wrapper { display: flex; width: 100%; }
-  #sidebar-wrapper {
-    min-width: 250px;
-    max-width: 250px;
-    background-color: #003366;
-    color: white;
-    min-height: 100vh;
-  }
-  .list-group-item {
-    border: none;
-    background-color: #003366;
-    color: white;
-  }
-  .list-group-item:hover {
-    background-color: #495057;
-  }
-  .list-group-item.active-page {
-    background-color: #6c757d !important; /* abu-abu */
-    color: white !important;
-  }
-  .collapse .list-group-item {
-    padding-left: 2rem;
-  }
-  #page-content-wrapper {
-    flex-grow: 1;
-  }
-  .navbar-dark .navbar-nav .nav-link {
-    color: white;
-  }
-  .navbar-dark .navbar-nav .nav-link:hover {
-    color: #ddd;
-  }
-  .btn-primary {
-    background-color: #003366;
-    border-color: #003366;
-  }
-  .btn-primary:hover {
-    background-color: #002244;
-    border-color: #002244;
-  }
-  .custom-glow-btn {
-    background-color: #1a1a2e;
-    color: #fff;
-    border: 2px solid #3c8dbc;
-    border-radius: 12px;
-    box-shadow: 0 0 10px rgba(60, 141, 188, 0.5);
-    transition: all 0.3s ease-in-out;
-  }
-  .custom-glow-btn:hover {
-    background-color: #3c8dbc;
-    box-shadow: 0 0 15px rgba(60, 141, 188, 0.7);
-  }
-  #wrapper.toggled #sidebar-wrapper {
-  margin-left: -250px;
-  transition: margin 0.3s ease;
-  }
-  #sidebar-wrapper {
-  transition: margin 0.3s ease;
-  }
-.action-btn {
-  min-width: 80px;
-  padding: 6px 10px;      /* tinggi tombol lebih besar */
-  margin-top: 3px;        /* jarak atas */
-  margin-bottom: 3px;     /* jarak bawah */
-  display: inline-flex;
+    body {
+  font-family: 'Poppins', sans-serif;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+/* === NAVIGATION STYLE === */
+    nav {
+  width: 100%;
+  position: fixed;
+  background: #003366;
+  padding: 8px 0;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  box-sizing: border-box;
+}
+.nav-container {
+  max-width: 1300px; /* biar lebih lebar */
+  margin: 0 40px 0 auto; /* dorong ke kanan */
+  display: flex;
+  justify-content: flex-end; /* tetap kanan */
   align-items: center;
-  justify-content: center;
+  height: 40px;
+}
+
+
+nav ul {
+  list-style: none;
+  display: flex;
+  margin: 0;
+  margin-left: auto;
+  padding: 0;
+  font-size: 14px;
+}
+nav ul li {
+  position: relative;
+  margin-left: 15px; /* jarak antar menu lebih renggang */
+}
+
+
+nav ul li:first-child {
+  margin-left: 0;
+}
+/* === Umum === */
+nav ul li a {
+  text-decoration: none;
+  color: white;
+  font-weight: bold;
+  padding: 5px 10px;
+  border-radius: 5px;
+  transition: background-color 0.3s, color 0.3s;
+  display: inline-block;
+}
+
+/* Hover semua menu aktif */
+nav ul li a:hover {
+  background-color: #FFCC00;
+  color: #003366;
+}
+
+/* Aktif menu biasa (HOME, BERITA, dsb) */
+nav ul li a.active {
+  background-color: transparent;
+  color: #FFCC00 !important;
+  font-weight: bold;
+}
+
+/* Aktif untuk parent menu (PROFIL, INFORMASI) */
+nav ul li a.parent-active {
+  background-color: transparent;
+  color: #FFCC00 !important;
+  font-weight: bold;
+}
+
+/* === DROPDOWN STYLE === */
+.nav-container ul li .dropdown-menu {
+  display: none;
+  position: absolute;
+  background-color: white;
+  top: 100%;
+  left: 0;
+  min-width: 180px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  padding: 0;
+  border-radius: 5px;
+}
+
+.nav-container ul li:hover .dropdown-menu {
+  display: block;
+}
+
+.nav-container ul li .dropdown-menu li {
+  width: 100%;
+  margin: 0;
+}
+
+.nav-container ul li .dropdown-menu li a {
+  color: #003366;
+  padding: 10px 15px;
+  display: inline-block;
+  font-weight: normal;
+  text-decoration: none;
+  position: relative;
+  transition: color 0.3s ease, font-weight 0.3s ease;
+}
+
+/* Efek underline kuning saat hover submenu */
+.nav-container ul li .dropdown-menu li a::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  transform: translateX(-50%) scaleX(0);
+  transform-origin: center;
+  width: 80%;
+  height: 2px;
+  background-color: #FFCC00;
+  transition: transform 0.3s ease;
+}
+
+.nav-container ul li .dropdown-menu li a:hover {
+  font-weight: bold;
+}
+
+.nav-container ul li .dropdown-menu li a:hover::after {
+  transform: translateX(-50%) scaleX(1);
+}
+
+/* Header */
+.container {
+  max-width: 1200px;
+  margin: auto;
+  padding: 20px;
+}
+.prestasi-header {
+  position: relative;
+  background-image: url('../image/sekolah/gambar_sekolah1.jpg');
+  background-size: cover;
+  background-position: center;
+  height: 300px;
+  color: white;
+  display: flex;
+  align-items: center;
+  text-align: left; /* penting: agar isi tidak rata tengah */
+  padding-left: 40px; /* geser isi ke kiri */
+}
+
+.prestasi-header .overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(75, 115, 190, 0.7); /* warna biru transparan */
+  z-index: 1;
+}
+
+.prestasi-header .header-content {
+  position: relative;
+  z-index: 2;
+}
+
+.breadcrumb {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.judul-prestasi {
+  font-size: 40px;
+  font-weight: 700;
+  margin-top: 10px;
+}
+
+
+.judul-prestasi {
+  font-size: 41px;
+  font-weight: bold;
+  margin: 0;
+}
+
+/*  PRESTASI */
+
+  .container {
+    max-width: 850px;
+    margin: auto;
+    padding: 40px 20px;
+  }
+
+  .prestasi-intro {
+    background-color: #eaf2fb;
+    border-radius: 12px;
+    padding: 25px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.05);
+    margin-bottom: 30px;
+    text-align: center;
+  }
+
+  .prestasi-intro h2 {
+    color: #003366;
+    font-size: 28px;
+    margin-bottom: 10px;
+    
+  }
+
+  .prestasi-intro p {
+    color: #1a3c5a;
+    font-size: 1.05em;
+  }
+
+  .tahun-pelajaran {
+  font-size: 20px;
+  font-weight: bold;
+  color: #003366;
+  display: inline-block; /* supaya garis sesuai lebar teks */
+  border-bottom: 5px solid #FFCC00; /* garis kuning */
+  padding-bottom: 3px; /* jarak antara teks dan garis */
+  margin-bottom: 20px; /* jarak dengan konten bawah */
+}
+
+
+  .collapsible {
+    font-weight: bold;
+    color: #003366;
+    background-color: #f1f8ff;
+    padding: 12px 16px;
+    margin: 10px 0;
+    cursor: pointer;
+    border-left: 5px solid #003366;
+    transition: all 0.2s ease-in-out;
+  }
+
+  .collapsible:hover {
+    background-color: #dbefff;
+  }
+
+  .prestasi-table {
+    display: none;
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 5px;
+    margin-bottom: 20px;
+    font-size: 0.95em;
+  }
+
+  .prestasi-table th, .prestasi-table td {
+    border: 1px solid #c0d4e8;
+    padding: 10px;
+    text-align: center;
+  }
+
+  .prestasi-table th {
+    background-color: #d6e6f5;
+    color: #003366;
+  }
+
+  .prestasi-table tr:nth-child(even) {
+    background-color: #f2f7fc;
+  }
+
+  .prestasi-table tr:hover {
+    background-color: #e0efff;
+  }
+
+/* Footer Container */
+.footer-map-content {
+  background-color: #003366;
+  color: #fafafa;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 30px 40px;
+  margin-top: 80px;
+  gap: 50px;
+}
+
+/* Kolom Kiri, Tengah, Kanan */
+.footer-map-content > div {
+  flex: 1;
+  min-width: 250px;
+}
+
+/* Judul */
+.footer-map-content h4 {
+  margin-bottom: 10px;
+  font-size: 18px;
+  color: #ffffff;
+}
+
+/* Paragraf */
+.footer-map-content p {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  color: #f0f0f0;
+}
+
+/* Map iframe */
+.map-iframe iframe {
+  width: 100%;
+  height: 180px;
+  margin-top: 20px;
+  border: 0;
+  border-radius: 8px;
+}
+.map-contact {
+  margin-left: 60px; 
+}
+/* Ikon Sosial */
+.footer-icons {
+  display: flex;
+  gap: 15px;
+  font-size: 26px;
+  margin-top: 30px;
+}
+
+.footer-icons a {
+ color: #fafafa;
+  transition: color 0.3s;
+}
+/* Warna muncul hanya saat hover */
+.footer-icons a[title="WhatsApp"]:hover { color: #25D366; }
+.footer-icons a[title="Instagram"]:hover { color: #C13584; }
+.footer-icons a[title="Facebook"]:hover { color: #1877F2; }
+.footer-icons a[title="Email"]:hover { color: #aa2215; }
+.footer-icons a[title="YouTube"]:hover {color: #FF0000;}
+
+
+.footer-copyright {
+  max-width: 100%;
+  background-color: #064c91; /* biru medium lebih terang */
+  padding: 10px 40px;
+  font-size: 17px;
+  color: #fefefe; /* warna teks putih kebiruan */
+  text-align: center;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+/* Responsive: stacked on small screens */
+@media (max-width: 650px) {
+  .footer {
+    flex-direction: column;
+    align-items: center;
+  }
+  .footer-map, .footer-icons {
+    flex: unset;
+    width: 100%;
+  }
+  .footer-icons {
+    flex-direction: row;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 15px;
+  }
 }
 
 </style>
 </head>
 <body>
-<div class="d-flex" id="wrapper">
-    <!-- Sidebar -->
-  <div id="sidebar-wrapper" class="p-3">
-    <div class="sidebar-heading text-white fw-bold mb-4">Dashboard Admin</div>
-    <div class="list-group list-group-flush">
-      <a href="home" class="list-group-item list-group-item-action"> <i class="fas fa-home me-2"></i>Home</a>
-      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
-        data-bs-toggle="collapse" href="#profilMenu">
-        <div class="d-flex align-items-center">
-          <i class="fas fa-school me-2"></i> <span>Profil</span>
-        </div>
-        <i class="fas fa-caret-down"></i>
-      </a>
-
-      <div class="collapse" id="profilMenu">
-        <a href="sejarah" class="list-group-item list-group-item-action"><i class="fas fa-book me-2"></i>Sejarah</a>
-        <a href="visi-misi" class="list-group-item list-group-item-action"><i class="fas fa-lightbulb me-2"></i> Visi dan Misi</a>
-        <a href="struktur-organisasi" class="list-group-item list-group-item-action"><i class="fas fa-sitemap me-2"></i>Struktur Organisasi</a>
-      </div>
-      <a href="berita" class="list-group-item list-group-item-action"><i class="fas fa-newspaper me-2"></i> Berita</a>
-      <a href="ppdb" class="list-group-item list-group-item-action"><i class="fas fa-users me-2"></i> PPDB</a>
-      <a href="prestasi" class="list-group-item list-group-item-action <?= ($currentPage == 'prestasi.php') ? 'active-page' : '' ?>"><i class="fas fa-trophy me-2"></i> Prestasi</a>
-<a class="list-group-item list-group-item-action d-flex align-items-center"
-        data-bs-toggle="collapse" data-bs-target="#informasiMenu" role="button" aria-expanded="false">
-        <i class="fas fa-info-circle me-2"></i> Informasi <i class="fas fa-caret-down ms-auto"></i>
-      </a>
-      <div class="collapse" id="informasiMenu">
-        <a href="ekstrakulikuler" class="list-group-item list-group-item-action"><i class="fas fa-swimmer me-2"></i> Ekstrakurikuler</a>
-        <a href="fasilitas" class="list-group-item list-group-item-action"><i class="fas fa-building me-2"></i> Fasilitas</a>
-        <a href="guru-staff" class="list-group-item list-group-item-action"><i class="fas fa-chalkboard-teacher me-2"></i> Guru dan Staff</a>
-        <a href="alumni" class="list-group-item list-group-item-action"><i class="fas fa-user-graduate me-2"></i> Alumni</a>
-      </div>
-      <a href="kelola-admin" class="list-group-item list-group-item-action <?= ($currentPage == 'kelola-admin.php') ? 'active-page' : '' ?>">
-        <i class="fas fa-user-shield me-2"></i> Kelola Admin
-      </a>
-    </div>
-  </div>
-
-  <!-- Page Content -->
-  <div id="page-content-wrapper" class="w-100">
-    <nav class="navbar navbar-expand navbar-dark bg-dark px-3 border-bottom">
-      <!-- Tombol toggle sidebar -->
-      <button class="btn btn-light me-2" id="sidebarToggle">
-        <i class="fas fa-bars"></i>
-      </button>
-
-      <!-- Profil (kanan atas) -->
-      <!-- Profil (kanan atas) -->
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle text-white" id="navbarDropdown" href="#" role="button" data-bs-toggle="dropdown">
-            <i class="fas fa-user fa-fw" style="color: white;"></i>
-            </a>
-            <ul class="dropdown-menu dropdown-menu-end shadow">
-            <li>
-                <a class="dropdown-item d-flex align-items-center" href="profil-admin">
-                <i class="fas fa-id-card me-2 text-secondary"></i> Profil Saya
-                </a>
-            </li>
-            <li><hr class="dropdown-divider" /></li>
-            <li>
-                <a class="dropdown-item d-flex align-items-center text-danger" href="logout">
-                <i class="fas fa-sign-out-alt me-2"></i> Logout
-                </a>
-            </li>
-            </ul>
-        </li>
+<nav>
+  <div class="nav-container">
+    <ul>
+      <li><a href="homepage" class="<?= $isHome?'active':'' ?>">HOME</a></li>
+      <li><a href="" class="no-link <?= $isProfil?'parent-active':'' ?>">PROFIL</a>
+        <ul class="dropdown-menu">
+          <li><a href="sejarah" class="<?= $currentPage==='sejarah.php'?'active':'' ?>">Sejarah</a></li>
+          <li><a href="visi-dan-misi" class="<?= $currentPage==='visi-dan-misi.php'?'active':'' ?>">Visi dan Misi</a></li>
+          <li><a href="struktur-organisasi" class="<?= $currentPage==='struktur-organisasi.php'?'active':'' ?>">Struktur Organisasi</a></li>
         </ul>
-    </nav>
-
-
-    <!-- PRESTASI -->
- <div class="content-wrapper py-4 bg-light rounded shadow-sm">
-  <div class="container">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h3 class="fw-bold text-dark mb-0">
-        <i class="bi bi-trophy-fill me-2"></i> Data Prestasi
-      </h3>
-    </div>
-
-
-
-    <div id="formPrestasi" class="card p-4 mb-5">
-  <h4 class="mb-3"><?= $editData ? "Edit Prestasi" : "Tambah Prestasi" ?></h4>
-
-      <!-- FORM DISINI -->
-
-  <?php if (isset($_SESSION['success'])): ?>
-  <div class="alert alert-secondary alert-dismissible fade show" role="alert">
-    <?= $_SESSION['success']; unset($_SESSION['success']); ?>
-    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </li>
+      <li><a href="berita" class="<?= $isBerita?'active':'' ?>">BERITA</a></li>
+      <li><a href="ppdb" class="<?= $isPPDB?'active':'' ?>">PPDB</a></li>
+      <li><a href="prestasi" class="<?= $isPrestasi?'active':'' ?>">PRESTASI</a></li>
+      <li><a href="" class="no-link <?= $isInformasi?'parent-active':'' ?>">INFORMASI</a>
+        <ul class="dropdown-menu">
+          <li><a href="ekstrakulikuler" class="<?= $currentPage==='ekstrakulikuler.php'?'active':'' ?>">Ekstrakulikuler</a></li>
+          <li><a href="fasilitas" class="<?= $currentPage==='fasilitas.php'?'active':'' ?>">Fasilitas</a></li>
+          <li><a href="guru-dan-staff" class="<?= $currentPage==='guru-dan-staff.php'?'active':'' ?>">Guru dan Staff</a></li>
+          <li><a href="alumni" class="<?= $currentPage==='alumni.php'?'active':'' ?>">Alumni</a></li>
+        </ul>
+      </li>
+      <li><a href="" class="no-link <?= $isAdmin?'parent-active':'' ?>">ADMIN</a>
+        <ul class="dropdown-menu">
+          <li><a href="../admin/login" class="<?= $currentPage==='login.php'?'active':'' ?>">Login</a></li>
+        </ul>
+      </li>
+    </ul>
   </div>
-  <?php endif; ?>
+</nav>
+  
 
-  <div class="card mb-4">
-    <div class="card-body">
-      <form method="POST" autocomplete="off">
-        <?php if ($editData): ?>
-          <input type="hidden" name="id" value="<?= $editData['id'] ?>">
-        <?php endif; ?>
-        <div class="mb-3">
-          <label class="form-label">Nama</label>
-          <input type="text" name="nama" class="form-control" required value="<?= htmlspecialchars($editData['nama'] ?? '') ?>">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Kelas</label>
-          <input type="text" name="kelas" class="form-control" required value="<?= htmlspecialchars($editData['kelas'] ?? '') ?>">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Nama Prestasi</label>
-          <input type="text" name="nama_prestasi" class="form-control" required value="<?= htmlspecialchars($editData['nama_prestasi'] ?? '') ?>">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Tahun Pelajaran</label>
-          <input type="text" name="tahun_pelajaran" class="form-control" required 
-                placeholder="contoh: 2024/2025"
-                value="<?= htmlspecialchars($editData['tahun_pelajaran'] ?? '') ?>">
-        </div>
+<!-- HEADER -->
+ <section class="prestasi-header">
+  <div class="overlay"></div>
+  <div class="header-content">
+    <p class="breadcrumb">Prestasi</p>
+    <h1 class="judul-prestasi">Prestasi</h1>
+  </div>
+</section>
 
-        <button type="submit" name="<?= $editData ? 'update' : 'tambah' ?>" class="btn btn-primary">
-          <?= $editData ? 'Simpan Perubahan' : 'Tambah' ?>
-        </button>
-        <?php if ($editData): ?>
-          <a href="prestasi.php" class="btn btn-secondary ms-2">Batal</a>
-        <?php endif; ?>
-      </form>
-    </div>
+
+<!-- KONTEN -->
+<div class="container">
+  <div class="prestasi-intro">
+    <h2>Prestasi Siswa</h2>
+    <p>
+      Di SD Muhammadiyah Purwokerto, setiap siswa adalah bintang yang bersinar dengan cara unik mereka masing-masing. Kami percaya bahwa prestasi bukan hanya tentang medali dan piagam, tetapi tentang keberanian, kerja keras, dan semangat pantang menyerah. 
+      Melalui bimbingan yang penuh kasih dan lingkungan belajar yang mendukung, siswa-siswi kami terus mengukir prestasi yang membanggakan baik di bidang akademik maupun non-akademik.
+    </p>
   </div>
 
-  <h5>Daftar Prestasi</h5>
-  <div class="table-responsive">
-    <table class="table table-bordered table-striped align-middle">
-      <thead class="table-light">
-        <tr>
-          <th>No.</th>
-          <th>Nama</th>
-          <th>Kelas</th>
-          <th>Nama Prestasi</th>
-          <th>Tahun Pelajaran</th>
-          <th>Aksi</th>
-        </tr>
-      </thead>
-      <tbody>
-      <?php if ($data->num_rows > 0): $no = 1; while ($row = $data->fetch_assoc()): ?>
+<?php foreach ($tahunList as $tahun): ?>
+  <h3 class="tahun-pelajaran">
+  Tahun Pelajaran <?= htmlspecialchars($tahun) ?>
+  </h3>
+
+
+  <div class="collapsible" onclick="toggleTable('table<?= $tahun ?>')">
+    ▸ Daftar Prestasi Siswa
+  </div>
+
+  <table id="table<?= $tahun ?>" class="prestasi-table" style="display:none;">
+    <thead>
+      <tr>
+        <th>No</th>
+        <th>Nama</th>
+        <th>Kelas</th>
+        <th>Nama Prestasi</th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php $no = 1; foreach ($allPrestasi[$tahun] as $row): ?>
         <tr>
           <td><?= $no++ ?></td>
           <td><?= htmlspecialchars($row['nama']) ?></td>
           <td><?= htmlspecialchars($row['kelas']) ?></td>
           <td><?= htmlspecialchars($row['nama_prestasi']) ?></td>
-          <td><?= htmlspecialchars($row['tahun_pelajaran']) ?></td>
-          <td class="text-center">
-            <a href="?edit=<?= $row['id'] ?>" class="btn btn-warning btn-sm d-block mb-2 action-btn">
-              <i class="fas fa-edit me-1"></i>Edit
-            </a>
-            <a href="?hapus=<?= $row['id'] ?>" 
-              onclick="return confirm('Yakin ingin menghapus?')" 
-              class="btn btn-danger btn-sm d-block action-btn">
-              <i class="fas fa-trash-alt me-1"></i>Hapus
-            </a>
-          </td>
-
         </tr>
-      <?php endwhile; else: ?>
-        <tr><td colspan="6" class="text-center">Belum ada data prestasi.</td></tr>
-      <?php endif; ?>
-      </tbody>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+<?php endforeach; ?>
 
-    </table>
+</div>
+
+
+<!-- FOOTER -->
+
+<div class="footer-map-content">
+  <!-- Kiri: Judul & Alamat -->
+  <div class="map-text">
+    <h4>Lokasi Kami</h4>
+    <p style="color:rgb(250, 250, 250); font-size: 14px; margin-bottom: 10px;">
+      <?= htmlspecialchars($kontak['alamat'] ?? 'Alamat belum tersedia') ?>
+    </p>
+  </div>
+
+  <!-- Tengah: Google Maps -->
+  <div class="map-iframe">
+    <?php if (!empty($kontak['link_gmaps'])): ?>
+      <iframe 
+        src="<?= htmlspecialchars($kontak['link_gmaps']) ?>" 
+        width="100%" height="180" style="border:0; border-radius:8px;" 
+        allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade">
+      </iframe>
+    <?php else: ?>
+      <p>Alamat lokasi belum tersedia.</p>
+    <?php endif; ?>
+  </div>
+
+  <!-- Kanan: Kontak Kami + Ikon Sosial -->
+  <div class="map-contact">
+    <h4>Kontak Kami</h4>
+    <div class="footer-icons">
+      <?php if (!empty($kontak['email'])): ?>
+        <a href="https://mail.google.com/mail/?view=cm&fs=1&to=<?= urlencode($kontak['email']) ?>" 
+          target="_blank" 
+          title="Email">
+          <i class="fas fa-envelope"></i>
+        </a>
+      <?php endif; ?>
+
+      <?php if (!empty($kontak['no_whatsapp'])): ?>
+        <a href="https://wa.me/<?= preg_replace('/\D/', '', $kontak['no_whatsapp']) ?>" target="_blank" title="WhatsApp">
+          <i class="fab fa-whatsapp"></i>
+        </a>
+      <?php endif; ?>
+
+      <?php if (!empty($kontak['instagram'])): ?>
+        <a href="https://instagram.com/<?= htmlspecialchars($kontak['instagram']) ?>" target="_blank" title="Instagram">
+          <i class="fab fa-instagram"></i>
+        </a>
+      <?php endif; ?>
+
+      <?php if (!empty($kontak['facebook'])): ?>
+        <a href="<?= htmlspecialchars($kontak['facebook']) ?>" target="_blank" title="Facebook">
+          <i class="fab fa-facebook"></i>
+        </a>
+      <?php endif; ?>
+
+      <?php if (!empty($kontak['youtube'])): ?>
+        <a href="<?= htmlspecialchars($kontak['youtube']) ?>" target="_blank" title="YouTube">
+          <i class="fab fa-youtube"></i>
+        </a>
+      <?php endif; ?>
+
+    </div>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  document.getElementById("sidebarToggle").addEventListener("click", function () {
-    document.getElementById("wrapper").classList.toggle("toggled");
-  });
 
+
+
+<div class="footer-copyright">
+    &copy; <?= date('Y') ?> SD Muhammadiyah Purwokerto. All rights reserved.
+  </div>
+
+</form>
+  
+
+
+<!-- JavaScript -->
+<script>
+  function toggleTable(tableId) {
+    const table = document.getElementById(tableId);
+    table.style.display = (table.style.display === "table") ? "none" : "table";
+  }
 </script>
 
 </body>
 </html>
-
